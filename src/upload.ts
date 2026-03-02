@@ -11,7 +11,18 @@ export async function uploadAsset(browser: Browser, assetId: number, zipPath: st
     console.log(chalk.blue(`[${label}] Asset ${assetId} için upload başlıyor...`));
 
     await page.goto(PORTAL_URL, { waitUntil: "networkidle2", timeout: 30_000 });
-    await page.waitForSelector("text/Created Assets", { timeout: 30_000 });
+
+    try {
+      await page.waitForSelector("text/Created Assets", { timeout: 30_000 });
+    } catch {
+      await page.screenshot({ path: `/tmp/debug-upload-${label}-${Date.now()}.png`, fullPage: true });
+      const url = page.url();
+      const text = await page.evaluate(() => document.body.innerText.slice(0, 1000));
+      console.log(chalk.red(`[DEBUG] URL: ${url}`));
+      console.log(chalk.red(`[DEBUG] Page text: ${text}`));
+      throw new Error(`Created Assets sayfası yüklenemedi (${label})`);
+    }
+
     await new Promise((r) => setTimeout(r, 3000));
 
     // Asset ID'ye göre satırı bul, checkbox'ına tıkla ve RE-UPLOAD'a bas
