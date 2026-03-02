@@ -161,11 +161,16 @@ async function loginWithPassword(browser: Browser): Promise<void> {
   await saveCookies(browser);
 }
 
+const launchOptions = {
+  headless: true,
+  args: ["--no-sandbox", "--disable-setuid-sandbox"],
+};
+
 export async function getAuthenticatedContext(): Promise<Browser> {
   const hasState = await authStateExists();
 
   if (hasState) {
-    const browser = await puppeteer.launch({ headless: false });
+    const browser = await puppeteer.launch(launchOptions);
     const page = (await browser.pages())[0];
 
     const raw = await readFile(AUTH_STATE_FILE, "utf-8");
@@ -185,7 +190,7 @@ export async function getAuthenticatedContext(): Promise<Browser> {
   }
 
   // Login: önce passkey, fallback parola
-  const browser = await puppeteer.launch({ headless: false });
+  const browser = await puppeteer.launch(launchOptions);
 
   if (await loginWithPasskey(browser)) {
     return browser;
