@@ -12,6 +12,12 @@ export async function uploadAsset(browser: Browser, assetId: number, zipPath: st
 
     await page.goto(PORTAL_URL, { waitUntil: "networkidle2" });
     await page.waitForSelector("text/Created Assets", { timeout: 15_000 });
+    await new Promise((r) => setTimeout(r, 3000));
+
+    // Debug: screenshot + page HTML dump
+    await page.screenshot({ path: `/tmp/debug-${label}.png`, fullPage: true });
+    const html = await page.evaluate(() => document.body.innerText);
+    console.log(chalk.gray(`[DEBUG] Page text:\n${html.slice(0, 2000)}`));
 
     // Asset ID'ye göre satırı bul, checkbox'ına tıkla ve RE-UPLOAD'a bas
     const found = await page.evaluate((id) => {
