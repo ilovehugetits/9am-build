@@ -186,8 +186,13 @@ async function loginWithPassword(browser: Browser): Promise<void> {
 }
 
 const launchOptions = {
-  headless: true,
-  args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  headless: "shell" as const,
+  args: [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-blink-features=AutomationControlled",
+    "--window-size=1280,800",
+  ],
   defaultViewport: { width: 1280, height: 800 },
 };
 
