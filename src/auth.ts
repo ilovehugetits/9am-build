@@ -35,13 +35,13 @@ async function loginWithPasskey(browser: Browser): Promise<boolean> {
     await page.goto(PORTAL_URL, { waitUntil: "networkidle2" });
     await new Promise((r) => setTimeout(r, 2000));
 
-    await page.screenshot({ path: "/tmp/debug-passkey-1-portal.png", fullPage: true });
+    console.log(chalk.gray(`[DEBUG] Passkey step 1 - URL: ${page.url()}`));
 
     const signInBtn = await page.waitForSelector('button::-p-text("Sign in with")', { timeout: 15_000 });
     await signInBtn!.click();
     await new Promise((r) => setTimeout(r, 2000));
 
-    await page.screenshot({ path: "/tmp/debug-passkey-2-signin.png", fullPage: true });
+    console.log(chalk.gray(`[DEBUG] Passkey step 2 - URL: ${page.url()}`));
 
     // "Log in with a passkey" butonuna tıkla
     await page.evaluate(() => {
@@ -55,7 +55,9 @@ async function loginWithPasskey(browser: Browser): Promise<boolean> {
     });
 
     await new Promise((r) => setTimeout(r, 5000));
-    await page.screenshot({ path: "/tmp/debug-passkey-3-after.png", fullPage: true });
+    console.log(chalk.gray(`[DEBUG] Passkey step 3 - URL: ${page.url()}`));
+    const afterText = await page.evaluate(() => document.body.innerText.slice(0, 300)).catch(() => "N/A");
+    console.log(chalk.gray(`[DEBUG] Passkey step 3 - Page: ${afterText}`));
 
     // WebAuthn otomatik olarak handle edilir, portal'a yönlendirilmesini bekle
     await page.waitForSelector("text/Created Assets", { timeout: 30_000 });
@@ -64,11 +66,10 @@ async function loginWithPasskey(browser: Browser): Promise<boolean> {
     await saveCookies(browser);
     return true;
   } catch (err) {
-    await page.screenshot({ path: "/tmp/debug-passkey-4-error.png", fullPage: true });
     const url = page.url();
-    const text = await page.evaluate(() => document.body.innerText.slice(0, 500)).catch(() => "");
+    const text = await page.evaluate(() => document.body.innerText.slice(0, 500)).catch(() => "N/A");
     console.log(chalk.yellow(`Passkey login başarısız (URL: ${url})`));
-    console.log(chalk.yellow(`Page: ${text.slice(0, 200)}\n`));
+    console.log(chalk.yellow(`Page: ${text.slice(0, 300)}`));
     console.log(chalk.yellow("Parola ile deneniyor...\n"));
     return false;
   }
@@ -166,18 +167,17 @@ async function loginWithPassword(browser: Browser): Promise<void> {
 
   await new Promise((r) => setTimeout(r, 3000));
 
-  await page.screenshot({ path: "/tmp/debug-password-1-after-login.png", fullPage: true });
-  const currentUrl = page.url();
-  console.log(chalk.gray(`[DEBUG] Password login sonrası URL: ${currentUrl}`));
+  console.log(chalk.gray(`[DEBUG] Password login sonrası URL: ${page.url()}`));
+  const pwText = await page.evaluate(() => document.body.innerText.slice(0, 500)).catch(() => "N/A");
+  console.log(chalk.gray(`[DEBUG] Password login page: ${pwText.slice(0, 300)}`));
 
   // 5. Portal'a geri dönmesini bekle
   try {
-    await page.waitForSelector("text/Created Assets", { timeout: 15_000 });
+    await page.waitForSelector("text/Created Assets", { timeout: 30_000 });
   } catch {
-    await page.screenshot({ path: "/tmp/debug-password-2-error.png", fullPage: true });
-    const text = await page.evaluate(() => document.body.innerText.slice(0, 500)).catch(() => "");
+    const errText = await page.evaluate(() => document.body.innerText.slice(0, 500)).catch(() => "N/A");
     console.log(chalk.red(`[DEBUG] Password login failed. URL: ${page.url()}`));
-    console.log(chalk.red(`[DEBUG] Page: ${text}`));
+    console.log(chalk.red(`[DEBUG] Page: ${errText}`));
     throw new Error("Password login sonrası Created Assets sayfası yüklenemedi.");
   }
 
