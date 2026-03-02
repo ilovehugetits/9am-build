@@ -1,0 +1,8 @@
+node_modules/
+repos/
+auth-state.json
+.env
+dist/
+*.zip
+.build/
+passkey-credential.json
