@@ -188,6 +188,7 @@ async function loginWithPassword(browser: Browser): Promise<void> {
 const launchOptions = {
   headless: true,
   args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  defaultViewport: { width: 1280, height: 800 },
 };
 
 export async function getAuthenticatedContext(): Promise<Browser> {
