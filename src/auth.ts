@@ -28,7 +28,7 @@ async function waitForPortalLoaded(page: import("puppeteer").Page, timeout = 30_
       !window.location.href.includes("/login"),
     { timeout },
   );
-  await page.waitForNetworkIdle({ timeout: 10_000 }).catch(() => {});
+  
 }
 
 async function loginWithPasskey(browser: Browser): Promise<boolean> {
@@ -194,6 +194,7 @@ async function loginWithPassword(browser: Browser): Promise<void> {
 
 const launchOptions = {
   headless: "shell" as const,
+  protocolTimeout: 120_000,
   args: [
     "--no-sandbox",
     "--disable-setuid-sandbox",

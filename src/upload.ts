@@ -11,7 +11,7 @@ async function waitForPortalLoaded(page: import("puppeteer").Page, timeout = 30_
       !window.location.href.includes("/login"),
     { timeout },
   );
-  await page.waitForNetworkIdle({ timeout: 10_000 }).catch(() => {});
+  
 }
 
 export async function uploadAsset(browser: Browser, assetId: number, zipPath: string, label: string): Promise<void> {
