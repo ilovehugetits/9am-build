@@ -22,14 +22,13 @@ async function saveCookies(browser: Browser): Promise<void> {
 }
 
 async function waitForPortalLoaded(page: import("puppeteer").Page, timeout = 30_000): Promise<void> {
-  await page.waitForFunction(
-    () =>
-      window.location.href.includes("portal.cfx.re") &&
-      !window.location.href.includes("/login") &&
-      !window.location.href.includes("/authenticate"),
-    { timeout },
+  await page.waitForURL(
+    (url) =>
+      url.hostname.includes("portal.cfx.re") &&
+      !url.pathname.startsWith("/login") &&
+      !url.pathname.startsWith("/authenticate"),
+    { timeout, waitUntil: "load" },
   );
-  
 }
 
 async function loginWithPasskey(browser: Browser): Promise<boolean> {
