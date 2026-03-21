@@ -21,6 +21,16 @@ async function saveCookies(browser: Browser): Promise<void> {
   await writeFile(AUTH_STATE_FILE, JSON.stringify(cookies, null, 2), "utf-8");
 }
 
+async function waitForPortalLoaded(page: import("puppeteer").Page, timeout = 30_000): Promise<void> {
+  await page.waitForFunction(
+    () =>
+      window.location.href.includes("portal.cfx.re") &&
+      !window.location.href.includes("/login"),
+    { timeout },
+  );
+  await page.waitForNetworkIdle({ timeout: 10_000 }).catch(() => {});
+}
+
 async function loginWithPasskey(browser: Browser): Promise<boolean> {
   const credential = await loadCredential();
   if (!credential) return false;
@@ -54,13 +64,10 @@ async function loginWithPasskey(browser: Browser): Promise<boolean> {
       }
     });
 
-    await new Promise((r) => setTimeout(r, 5000));
-    console.log(chalk.gray(`[DEBUG] Passkey step 3 - URL: ${page.url()}`));
-    const afterText = await page.evaluate(() => document.body.innerText.slice(0, 300)).catch(() => "N/A");
-    console.log(chalk.gray(`[DEBUG] Passkey step 3 - Page: ${afterText}`));
-
     // WebAuthn otomatik olarak handle edilir, portal'a yönlendirilmesini bekle
-    await page.waitForSelector("text/Created Assets", { timeout: 30_000 });
+    await waitForPortalLoaded(page, 30_000);
+
+    console.log(chalk.gray(`[DEBUG] Passkey step 3 - URL: ${page.url()}`));
 
     console.log(chalk.green("Passkey ile giriş başarılı!\n"));
     await saveCookies(browser);
@@ -151,7 +158,7 @@ async function loginWithPassword(browser: Browser): Promise<void> {
       console.log(chalk.blue("Manuel login tespit edildi, devam ediliyor..."));
       await new Promise((r) => setTimeout(r, 3000));
       await page.goto(PORTAL_URL, { waitUntil: "networkidle2" });
-      await page.waitForSelector("text/Created Assets", { timeout: 15_000 });
+      await waitForPortalLoaded(page, 15_000);
       console.log(chalk.green("Giriş başarılı! Session kaydediliyor...\n"));
       await saveCookies(browser);
       return;
@@ -173,12 +180,12 @@ async function loginWithPassword(browser: Browser): Promise<void> {
 
   // 5. Portal'a geri dönmesini bekle
   try {
-    await page.waitForSelector("text/Created Assets", { timeout: 30_000 });
+    await waitForPortalLoaded(page, 30_000);
   } catch {
     const errText = await page.evaluate(() => document.body.innerText.slice(0, 500)).catch(() => "N/A");
     console.log(chalk.red(`[DEBUG] Password login failed. URL: ${page.url()}`));
     console.log(chalk.red(`[DEBUG] Page: ${errText}`));
-    throw new Error("Password login sonrası Created Assets sayfası yüklenemedi.");
+    throw new Error("Password login sonrası portal sayfası yüklenemedi.");
   }
 
   console.log(chalk.green("Giriş başarılı! Session kaydediliyor...\n"));
@@ -210,7 +217,7 @@ export async function getAuthenticatedContext(): Promise<Browser> {
     await page.goto(PORTAL_URL, { waitUntil: "networkidle2" });
 
     try {
-      await page.waitForSelector("text/Created Assets", { timeout: 10_000 });
+      await waitForPortalLoaded(page, 10_000);
       console.log(chalk.green("Mevcut session geçerli.\n"));
       return browser;
     } catch {
