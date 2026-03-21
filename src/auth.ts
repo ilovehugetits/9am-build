@@ -199,7 +199,7 @@ async function loginWithPassword(browser: Browser): Promise<void> {
 }
 
 const launchOptions = {
-  headless: "shell" as const,
+  headless: true,
   protocolTimeout: 120_000,
   args: [
     "--no-sandbox",
