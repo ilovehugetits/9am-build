@@ -4,6 +4,16 @@ import chalk from "chalk";
 
 const PORTAL_URL = "https://portal.cfx.re/assets/created-assets";
 
+async function waitForPortalLoaded(page: import("puppeteer").Page, timeout = 30_000): Promise<void> {
+  await page.waitForFunction(
+    () =>
+      window.location.href.includes("portal.cfx.re") &&
+      !window.location.href.includes("/login"),
+    { timeout },
+  );
+  await page.waitForNetworkIdle({ timeout: 10_000 }).catch(() => {});
+}
+
 export async function uploadAsset(browser: Browser, assetId: number, zipPath: string, label: string): Promise<void> {
   const page = await browser.newPage();
 
@@ -13,14 +23,14 @@ export async function uploadAsset(browser: Browser, assetId: number, zipPath: st
     await page.goto(PORTAL_URL, { waitUntil: "networkidle2", timeout: 30_000 });
 
     try {
-      await page.waitForSelector("text/Created Assets", { timeout: 30_000 });
+      await waitForPortalLoaded(page, 30_000);
     } catch {
       await page.screenshot({ path: `/tmp/debug-upload-${label}-${Date.now()}.png`, fullPage: true });
       const url = page.url();
       const text = await page.evaluate(() => document.body.innerText.slice(0, 1000));
       console.log(chalk.red(`[DEBUG] URL: ${url}`));
       console.log(chalk.red(`[DEBUG] Page text: ${text}`));
-      throw new Error(`Created Assets sayfası yüklenemedi (${label})`);
+      throw new Error(`Portal sayfası yüklenemedi (${label})`);
     }
 
     await new Promise((r) => setTimeout(r, 3000));
