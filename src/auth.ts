@@ -22,13 +22,19 @@ async function saveCookies(browser: Browser): Promise<void> {
 }
 
 async function waitForPortalLoaded(page: import("puppeteer").Page, timeout = 30_000): Promise<void> {
-  await page.waitForURL(
-    (url) =>
-      url.hostname.includes("portal.cfx.re") &&
-      !url.pathname.startsWith("/login") &&
-      !url.pathname.startsWith("/authenticate"),
-    { timeout, waitUntil: "load" },
-  );
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const url = page.url();
+    if (
+      url.includes("portal.cfx.re") &&
+      !url.includes("/login") &&
+      !url.includes("/authenticate")
+    ) {
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  throw new Error(`Portal yüklenemedi (timeout), son URL: ${page.url()}`);
 }
 
 async function loginWithPasskey(browser: Browser): Promise<boolean> {

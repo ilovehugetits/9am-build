@@ -5,13 +5,19 @@ import chalk from "chalk";
 const PORTAL_URL = "https://portal.cfx.re/assets/created-assets";
 
 async function waitForPortalLoaded(page: import("puppeteer").Page, timeout = 30_000): Promise<void> {
-  await page.waitForURL(
-    (url) =>
-      url.hostname.includes("portal.cfx.re") &&
-      !url.pathname.startsWith("/login") &&
-      !url.pathname.startsWith("/authenticate"),
-    { timeout, waitUntil: "load" },
-  );
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const url = page.url();
+    if (
+      url.includes("portal.cfx.re") &&
+      !url.includes("/login") &&
+      !url.includes("/authenticate")
+    ) {
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  throw new Error(`Portal yüklenemedi (timeout), son URL: ${page.url()}`);
 }
 
 export async function uploadAsset(browser: Browser, assetId: number, zipPath: string, label: string): Promise<void> {
