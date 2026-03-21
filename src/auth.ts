@@ -42,7 +42,7 @@ async function loginWithPasskey(browser: Browser): Promise<boolean> {
   try {
     await setupVirtualAuthenticator(page, credential);
 
-    await page.goto(PORTAL_URL, { waitUntil: "networkidle2" });
+    await page.goto(PORTAL_URL, { waitUntil: "load" });
     await new Promise((r) => setTimeout(r, 2000));
 
     console.log(chalk.gray(`[DEBUG] Passkey step 1 - URL: ${page.url()}`));
@@ -95,7 +95,7 @@ async function loginWithPassword(browser: Browser): Promise<void> {
   const page = (await browser.pages())[0];
 
   // 1. Portal'a git → login sayfasına yönlendirir
-  await page.goto(PORTAL_URL, { waitUntil: "networkidle2" });
+  await page.goto(PORTAL_URL, { waitUntil: "load" });
   await new Promise((r) => setTimeout(r, 2000));
 
   // 2. "Sign in with" butonuna tıkla → Forum login'e yönlendirir
@@ -157,7 +157,7 @@ async function loginWithPassword(browser: Browser): Promise<void> {
     if (manuallyLoggedIn) {
       console.log(chalk.blue("Manuel login tespit edildi, devam ediliyor..."));
       await new Promise((r) => setTimeout(r, 3000));
-      await page.goto(PORTAL_URL, { waitUntil: "networkidle2" });
+      await page.goto(PORTAL_URL, { waitUntil: "load" });
       await waitForPortalLoaded(page, 15_000);
       console.log(chalk.green("Giriş başarılı! Session kaydediliyor...\n"));
       await saveCookies(browser);
@@ -165,7 +165,7 @@ async function loginWithPassword(browser: Browser): Promise<void> {
     }
 
     // Rate limit bitti, tekrar dene
-    await page.reload({ waitUntil: "networkidle2" });
+    await page.reload({ waitUntil: "load" });
     waitSeconds = await submitLogin();
     if (waitSeconds > 0) {
       throw new Error(`Rate limit devam ediyor (${waitSeconds}s). Daha sonra tekrar deneyin.`);
@@ -214,7 +214,7 @@ export async function getAuthenticatedContext(): Promise<Browser> {
     const cookies = JSON.parse(raw);
     await browser.defaultBrowserContext().setCookie(...cookies);
 
-    await page.goto(PORTAL_URL, { waitUntil: "networkidle2" });
+    await page.goto(PORTAL_URL, { waitUntil: "load" });
 
     try {
       await waitForPortalLoaded(page, 10_000);

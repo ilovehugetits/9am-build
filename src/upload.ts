@@ -20,7 +20,7 @@ export async function uploadAsset(browser: Browser, assetId: number, zipPath: st
   try {
     console.log(chalk.blue(`[${label}] Asset ${assetId} için upload başlıyor...`));
 
-    await page.goto(PORTAL_URL, { waitUntil: "networkidle2", timeout: 30_000 });
+    await page.goto(PORTAL_URL, { waitUntil: "load", timeout: 30_000 });
 
     try {
       await waitForPortalLoaded(page, 30_000);
