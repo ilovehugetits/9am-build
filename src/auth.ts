@@ -25,7 +25,8 @@ async function waitForPortalLoaded(page: import("puppeteer").Page, timeout = 30_
   await page.waitForFunction(
     () =>
       window.location.href.includes("portal.cfx.re") &&
-      !window.location.href.includes("/login"),
+      !window.location.href.includes("/login") &&
+      !window.location.href.includes("/authenticate"),
     { timeout },
   );
   
