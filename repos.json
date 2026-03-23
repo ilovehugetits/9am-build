@@ -4,6 +4,11 @@
       "name": "9am-vehicleshop",
       "githubUrl": "git@github.com:ilovehugetits/9am-vehicleshop.git",
       "branch": "main"
+    },
+    {
+      "name": "9am-textui",
+      "githubUrl": "git@github.com:ilovehugetits/9am-textui.git",
+      "branch": "master"
     }
   ]
 }
