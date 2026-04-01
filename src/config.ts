@@ -9,6 +9,7 @@ export interface VersionConfig {
 export interface FrontendConfig {
   dir: string;
   buildCommand?: string;
+  buildOutput?: string;
 }
 
 export interface UploadConfig {
@@ -29,23 +30,23 @@ export async function loadConfig(scriptDir: string): Promise<UploadConfig> {
   const config: UploadConfig = JSON.parse(raw);
 
   if (!config.name) {
-    throw new Error("Config'de 'name' alanı eksik.");
+    throw new Error("Config is missing 'name' field.");
   }
 
   if (!config.versions || (!config.versions.escrow && !config.versions.open)) {
-    throw new Error("Config'de en az bir versiyon (escrow veya open) tanımlanmalı.");
+    throw new Error("Config must define at least one version (escrow or open).");
   }
 
   if (config.versions.escrow && config.versions.escrow.assetId == null) {
-    throw new Error("Escrow versiyonunda 'assetId' eksik.");
+    throw new Error("Escrow version is missing 'assetId'.");
   }
 
   if (config.versions.open && config.versions.open.assetId == null) {
-    throw new Error("Open source versiyonunda 'assetId' eksik.");
+    throw new Error("Open source version is missing 'assetId'.");
   }
 
   if (config.versions.escrow && (!config.versions.escrow.escrowIgnore || config.versions.escrow.escrowIgnore.length === 0)) {
-    throw new Error("Escrow versiyonunda 'escrowIgnore' listesi boş olamaz.");
+    throw new Error("Escrow version 'escrowIgnore' list cannot be empty.");
   }
 
   return config;

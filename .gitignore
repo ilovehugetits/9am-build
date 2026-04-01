@@ -27,3 +27,6 @@ Thumbs.db
 
 # Bun
 *.lockb
+
+# Claude Code
+.claude/

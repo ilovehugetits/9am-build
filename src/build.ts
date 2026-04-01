@@ -40,7 +40,7 @@ async function buildFrontend(scriptDir: string, config: UploadConfig): Promise<v
   try {
     await access(path.join(frontendDir, "package.json"));
   } catch {
-    throw new Error(`Frontend dizini bulunamadı: ${frontendDir}`);
+    throw new Error(`Frontend directory not found: ${frontendDir}`);
   }
 
   const buildCmd = config.frontend.buildCommand ?? "bun run build";
@@ -49,17 +49,17 @@ async function buildFrontend(scriptDir: string, config: UploadConfig): Promise<v
   // Install dependencies
   const install = Bun.spawnSync(["bun", "install"], { cwd: frontendDir, stdio: ["pipe", "pipe", "pipe"] });
   if (install.exitCode !== 0) {
-    throw new Error(`Frontend bun install başarısız: ${install.stderr.toString()}`);
+    throw new Error(`Frontend bun install failed: ${install.stderr.toString()}`);
   }
 
   // Run build
   const parts = buildCmd.split(" ");
   const build = Bun.spawnSync(parts, { cwd: frontendDir, stdio: ["pipe", "pipe", "pipe"] });
   if (build.exitCode !== 0) {
-    throw new Error(`Frontend build başarısız: ${build.stderr.toString()}`);
+    throw new Error(`Frontend build failed: ${build.stderr.toString()}`);
   }
 
-  console.log(chalk.green("Frontend build tamamlandı."));
+  console.log(chalk.green("Frontend build completed."));
 }
 
 function buildEscrowIgnoreBlock(patterns: string[]): string {
@@ -91,29 +91,28 @@ export async function buildVersions(scriptDir: string, config: UploadConfig, out
   const result: BuildResult = {};
   const resolvedScriptDir = path.resolve(scriptDir);
 
-  // Frontend build (zip'lemeden önce)
+  // Frontend build (before zipping)
   await buildFrontend(resolvedScriptDir, config);
 
-  // Escrow: frontend src hariç, sadece dist
+  // Escrow: exclude entire frontend dir, then copy only build output
   if (config.versions.escrow) {
     const escrowExclude = [...config.exclude];
     if (config.frontend) {
-      escrowExclude.push(`${config.frontend.dir}/src/**`);
-      escrowExclude.push(`${config.frontend.dir}/package.json`);
-      escrowExclude.push(`${config.frontend.dir}/package-lock.json`);
-      escrowExclude.push(`${config.frontend.dir}/bun.lock`);
-      escrowExclude.push(`${config.frontend.dir}/bun.lockb`);
-      escrowExclude.push(`${config.frontend.dir}/tsconfig*.json`);
-      escrowExclude.push(`${config.frontend.dir}/vite.config.*`);
-      escrowExclude.push(`${config.frontend.dir}/tailwind.config.*`);
-      escrowExclude.push(`${config.frontend.dir}/postcss.config.*`);
-      escrowExclude.push(`${config.frontend.dir}/.env*`);
+      escrowExclude.push(`${config.frontend.dir}/**`);
     }
 
     const tempDir = await mkdtemp(path.join(os.tmpdir(), `${config.name}-escrow-`));
 
     try {
       await copyScriptFiles(resolvedScriptDir, tempDir, escrowExclude);
+
+      // Copy only the frontend build output
+      if (config.frontend) {
+        const buildOutput = config.frontend.buildOutput ?? "build";
+        const srcBuildDir = path.join(resolvedScriptDir, config.frontend.dir, buildOutput);
+        const destBuildDir = path.join(tempDir, config.frontend.dir, buildOutput);
+        await cp(srcBuildDir, destBuildDir, { recursive: true, force: true });
+      }
 
       const fxPath = path.join(tempDir, "fxmanifest.lua");
       await appendEscrowIgnore(fxPath, config.versions.escrow.escrowIgnore!);
@@ -126,7 +125,7 @@ export async function buildVersions(scriptDir: string, config: UploadConfig, out
     }
   }
 
-  // Open source: frontend src dahil
+  // Open source: include frontend src
   if (config.versions.open) {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), `${config.name}-open-`));
 
