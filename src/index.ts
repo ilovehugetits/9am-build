@@ -10,41 +10,41 @@ async function main() {
   const command = process.argv[2];
 
   if (!command) {
-    console.error(chalk.red("Kullanım:"));
-    console.error(chalk.red("  bun run deploy <script-adı>    Build + upload"));
-    console.error(chalk.red("  bun run build <script-adı>     Sadece build (upload yok)"));
-    console.error(chalk.red("  bun run server                 Webhook server başlat"));
-    console.error(chalk.red("  bun run register-passkey       Forum'a passkey kaydet"));
+    console.error(chalk.red("Usage:"));
+    console.error(chalk.red("  bun run deploy <script-name>    Build + upload"));
+    console.error(chalk.red("  bun run build <script-name>     Build only (no upload)"));
+    console.error(chalk.red("  bun run server                  Start webhook server"));
+    console.error(chalk.red("  bun run register-passkey        Register forum passkey"));
     console.error(chalk.red("  bun src/index.ts debug <repo> <commit-id>  Changelog test"));
     process.exit(1);
   }
 
-  // Server modu
+  // Server mode
   if (command === "server" || command === "serve") {
     await startServer();
     return;
   }
 
-  // Passkey kayıt modu
+  // Passkey registration mode
   if (command === "register-passkey") {
     await registerPasskey();
     return;
   }
 
-  // Debug modu: "debug <repo-adı> <commit-id>"
+  // Debug mode: "debug <repo-name> <commit-id>"
   if (command === "debug") {
     const repoName = process.argv[3];
     const commitId = process.argv[4];
 
     if (!repoName || !commitId) {
-      console.error(chalk.red("Kullanım: bun src/index.ts debug <repo-adı> <commit-id>"));
+      console.error(chalk.red("Usage: bun src/index.ts debug <repo-name> <commit-id>"));
       process.exit(1);
     }
 
     const repoDir = getRepoDir(repoName);
     console.log(chalk.bold(`\n9am-build — Debug Changelog\n`));
 
-    // Commit bilgilerini al
+    // Get commit info
     const logResult = Bun.spawnSync(
       ["git", "log", commitId, "-1", "--pretty=format:%s"],
       { cwd: repoDir, stdio: ["pipe", "pipe", "pipe"] }
@@ -67,13 +67,13 @@ async function main() {
       else modified.push(file);
     }
 
-    // Diff al (commit vs parent)
+    // Get diff (commit vs parent)
     const diff = getGitDiff(repoDir, `${commitId}~1`, commitId);
 
     console.log(chalk.gray(`Commit: ${commitMessage}`));
     console.log(chalk.gray(`Files: +${added.length} -${removed.length} ~${modified.length}\n`));
 
-    // Changelog üret
+    // Generate changelog
     const changelog = await generateChangelog({
       repoName,
       commits: [{ message: commitMessage, added, removed, modified }],
@@ -82,17 +82,17 @@ async function main() {
 
     console.log(chalk.green(`Changelog:\n${changelog}\n`));
 
-    // Discord'a gönder
+    // Send to Discord
     await sendDiscordChangelog({ repoName, changelog });
     return;
   }
 
-  // Build-only modu: "build <script-adı>"
+  // Build-only mode: "build <script-name>"
   const buildOnly = command === "build";
   const scriptName = buildOnly ? process.argv[3] : command;
 
   if (!scriptName) {
-    console.error(chalk.red("Script adı belirtilmedi."));
+    console.error(chalk.red("Script name not specified."));
     process.exit(1);
   }
 
@@ -100,7 +100,7 @@ async function main() {
   const repo = config.repos.find((r) => r.name === scriptName);
 
   if (!repo) {
-    console.log(chalk.yellow(`[${scriptName}] repos.json'da bulunamadı, doğrudan dizin olarak deneniyor...`));
+    console.log(chalk.yellow(`[${scriptName}] Not found in repos.json, trying as direct path...`));
     await deployScript(scriptName, { buildOnly });
     return;
   }
@@ -110,6 +110,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(chalk.red(`\nHata: ${err.message}`));
+  console.error(chalk.red(`\nError: ${err.message}`));
   process.exit(1);
 });

@@ -8,10 +8,10 @@ class BuildQueue {
 
   async enqueue(repoName: string, task: Task): Promise<void> {
     if (this.running) {
-      // Aynı repo için bekleyen varsa düşür (latest wins)
+      // Drop pending task for same repo (latest wins)
       this.pending = this.pending.filter((t) => t.repoName !== repoName);
       this.pending.push({ repoName, task });
-      console.log(chalk.yellow(`[${repoName}] Build zaten çalışıyor, sıraya eklendi.`));
+      console.log(chalk.yellow(`[${repoName}] Build already running, queued.`));
       return;
     }
 
@@ -20,7 +20,7 @@ class BuildQueue {
     try {
       await task();
     } catch (err: any) {
-      console.error(chalk.red(`[${repoName}] Build hatası: ${err.message}`));
+      console.error(chalk.red(`[${repoName}] Build error: ${err.message}`));
     } finally {
       this.running = false;
 

@@ -38,14 +38,14 @@ export async function cloneOrPull(
   const repoDir = getRepoDir(repoName);
 
   if (await isCloned(repoName)) {
-    console.log(chalk.gray(`[${repoName}] Repo mevcut, pull yapılıyor...`));
+    console.log(chalk.gray(`[${repoName}] Repo exists, pulling...`));
     runGit(["-C", repoDir, "fetch", "origin", branch]);
     runGit(["-C", repoDir, "reset", "--hard", `origin/${branch}`]);
-    console.log(chalk.green(`[${repoName}] Pull tamamlandı.`));
+    console.log(chalk.green(`[${repoName}] Pull completed.`));
   } else {
-    console.log(chalk.gray(`[${repoName}] Repo clone ediliyor...`));
+    console.log(chalk.gray(`[${repoName}] Cloning repo...`));
     runGit(["clone", "--branch", branch, "--single-branch", githubUrl, repoDir]);
-    console.log(chalk.green(`[${repoName}] Clone tamamlandı.`));
+    console.log(chalk.green(`[${repoName}] Clone completed.`));
   }
 
   return repoDir;

@@ -7,24 +7,20 @@ const PORTAL_URL = "https://portal.cfx.re/assets/created-assets";
 async function waitForPortalLoaded(page: import("puppeteer").Page, timeout = 30_000): Promise<void> {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
-    const url = page.url();
-    if (
-      url.includes("portal.cfx.re") &&
-      !url.includes("/login") &&
-      !url.includes("/authenticate")
-    ) {
-      return;
-    }
+    const hasCreatedAssets = await page.evaluate(() =>
+      document.body.innerText.includes("Created Assets")
+    ).catch(() => false);
+    if (hasCreatedAssets) return;
     await new Promise((r) => setTimeout(r, 500));
   }
-  throw new Error(`Portal yüklenemedi (timeout), son URL: ${page.url()}`);
+  throw new Error(`Portal failed to load (timeout), last URL: ${page.url()}`);
 }
 
 export async function uploadAsset(browser: Browser, assetId: number, zipPath: string, label: string): Promise<void> {
   const page = await browser.newPage();
 
   try {
-    console.log(chalk.blue(`[${label}] Asset ${assetId} için upload başlıyor...`));
+    console.log(chalk.blue(`[${label}] Starting upload for asset ${assetId}...`));
 
     await page.goto(PORTAL_URL, { waitUntil: "load", timeout: 30_000 });
 
@@ -33,15 +29,12 @@ export async function uploadAsset(browser: Browser, assetId: number, zipPath: st
     } catch {
       await page.screenshot({ path: `/tmp/debug-upload-${label}-${Date.now()}.png`, fullPage: true });
       const url = page.url();
-      const text = await page.evaluate(() => document.body.innerText.slice(0, 1000));
-      console.log(chalk.red(`[DEBUG] URL: ${url}`));
-      console.log(chalk.red(`[DEBUG] Page text: ${text}`));
-      throw new Error(`Portal sayfası yüklenemedi (${label})`);
+      throw new Error(`Portal page failed to load (${label}): ${url}`);
     }
 
     await new Promise((r) => setTimeout(r, 3000));
 
-    // Asset ID'ye göre satırı bul, checkbox'ına tıkla ve RE-UPLOAD'a bas
+    // Find row by asset ID, click checkbox, then RE-UPLOAD
     const found = await page.evaluate((id) => {
       const rows = document.querySelectorAll("tr");
       for (const r of rows) {
@@ -55,12 +48,12 @@ export async function uploadAsset(browser: Browser, assetId: number, zipPath: st
     }, assetId);
 
     if (!found) {
-      throw new Error(`Asset ID ${assetId} portalda bulunamadı.`);
+      throw new Error(`Asset ID ${assetId} not found on portal.`);
     }
 
     await new Promise((r) => setTimeout(r, 500));
 
-    // RE-UPLOAD butonuna tıkla
+    // Click RE-UPLOAD button
     await page.evaluate(() => {
       const buttons = document.querySelectorAll("button");
       for (const b of buttons) {
@@ -71,13 +64,13 @@ export async function uploadAsset(browser: Browser, assetId: number, zipPath: st
       }
     });
 
-    // "Update an asset" modal'ının açılmasını bekle
+    // Wait for "Update an asset" modal to appear
     await page.waitForSelector("dialog, [role='dialog']", { visible: true, timeout: 10_000 });
 
-    // Modal içindeki file input'u bul ve dosyayı yükle
+    // Find file input in modal and upload file
     const fileInput = await page.$('dialog input[type="file"], [role="dialog"] input[type="file"]');
     if (!fileInput) {
-      // File input gizli olabilir, Choose File butonuna tıklayıp filechooser yakala
+      // File input may be hidden, click Choose File and catch file chooser
       const [fileChooser] = await Promise.all([
         page.waitForFileChooser({ timeout: 10_000 }),
         page.evaluate(() => {
@@ -96,9 +89,9 @@ export async function uploadAsset(browser: Browser, assetId: number, zipPath: st
       await fileInput.uploadFile(path.resolve(zipPath));
     }
 
-    console.log(chalk.blue(`[${label}] Dosya seçildi, upload bekleniyor...`));
+    console.log(chalk.blue(`[${label}] File selected, waiting for upload...`));
 
-    // "Upload File" butonu aktif olacak, tıkla
+    // Click "Upload File" button
     await new Promise((r) => setTimeout(r, 1000));
 
     await page.evaluate(() => {
@@ -112,11 +105,12 @@ export async function uploadAsset(browser: Browser, assetId: number, zipPath: st
       }
     });
 
-    // Upload tamamlanmasını bekle (modal kapanır)
+    // Wait for upload to complete (modal closes)
     await page.waitForSelector("dialog, [role='dialog']", { hidden: true, timeout: 120_000 });
 
-    console.log(chalk.green(`[${label}] Asset ${assetId} başarıyla yüklendi!\n`));
-  } finally {
-    await page.close();
+    console.log(chalk.green(`[${label}] Asset ${assetId} uploaded successfully!\n`));
+  } catch (err) {
+    // Keep page open on error for inspection
+    throw err;
   }
 }

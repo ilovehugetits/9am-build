@@ -14,8 +14,8 @@ export async function deployScript(scriptDir: string, options: DeployOptions = {
   const resolvedDir = path.resolve(scriptDir);
   console.log(chalk.bold(`\n9am-build — ${resolvedDir}\n`));
 
-  // 1. Config oku
-  console.log(chalk.gray("Config okunuyor..."));
+  // 1. Load config
+  console.log(chalk.gray("Loading config..."));
   const config = await loadConfig(resolvedDir);
   console.log(chalk.green(`Script: ${config.name}`));
 
@@ -23,14 +23,14 @@ export async function deployScript(scriptDir: string, options: DeployOptions = {
     config.versions.escrow && "escrow",
     config.versions.open && "open",
   ].filter(Boolean);
-  console.log(chalk.green(`Versiyonlar: ${versionList.join(", ")}\n`));
+  console.log(chalk.green(`Versions: ${versionList.join(", ")}\n`));
 
-  // 2. Zip'ler için output klasörü
+  // 2. Output directory for zips
   const outputDir = path.join(resolvedDir, ".build");
   await mkdir(outputDir, { recursive: true });
 
   // 3. Build
-  console.log(chalk.gray("Zip dosyaları oluşturuluyor..."));
+  console.log(chalk.gray("Creating zip files..."));
   const zips = await buildVersions(resolvedDir, config, outputDir);
 
   if (zips.escrowZip) {
@@ -42,12 +42,12 @@ export async function deployScript(scriptDir: string, options: DeployOptions = {
   console.log();
 
   if (options.buildOnly) {
-    console.log(chalk.bold.green("Zip'ler hazır! (.build/ klasöründe)\n"));
+    console.log(chalk.bold.green("Zips ready! (.build/ directory)\n"));
     return;
   }
 
   // 4. Auth
-  console.log(chalk.gray("Portal auth kontrol ediliyor..."));
+  console.log(chalk.gray("Checking portal auth..."));
   const context = await getAuthenticatedContext();
 
   // 5. Upload
@@ -60,12 +60,19 @@ export async function deployScript(scriptDir: string, options: DeployOptions = {
       await uploadAsset(context, config.versions.open.assetId, zips.openZip, "OPEN");
     }
 
-    console.log(chalk.bold.green("Tüm versiyonlar başarıyla yüklendi!"));
-  } finally {
+    console.log(chalk.bold.green("All versions uploaded successfully!"));
     await context.close();
+  } catch (err) {
+    console.log(chalk.red("Upload error — keeping browser open for inspection."));
+    console.log(chalk.yellow("Process will exit when you close the browser."));
+    // Wait until browser is closed
+    await new Promise<void>((resolve) => {
+      context.on("disconnected", resolve);
+    });
+    throw err;
   }
 
-  // 6. Temizlik
+  // 6. Cleanup
   await rm(outputDir, { recursive: true, force: true });
-  console.log(chalk.gray("Geçici dosyalar temizlendi.\n"));
+  console.log(chalk.gray("Temporary files cleaned up.\n"));
 }

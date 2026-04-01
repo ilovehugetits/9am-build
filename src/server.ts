@@ -47,7 +47,7 @@ export async function loadReposConfig(): Promise<ReposConfig> {
   const config: ReposConfig = JSON.parse(raw);
 
   if (!config.repos || config.repos.length === 0) {
-    throw new Error("repos.json: 'repos' listesi boş olamaz.");
+    throw new Error("repos.json: 'repos' list cannot be empty.");
   }
 
   return config;
@@ -55,7 +55,7 @@ export async function loadReposConfig(): Promise<ReposConfig> {
 
 function getEnv(key: string): string {
   const value = process.env[key];
-  if (!value) throw new Error(`.env: '${key}' tanımlı değil.`);
+  if (!value) throw new Error(`.env: '${key}' is not defined.`);
   return value;
 }
 
@@ -78,26 +78,26 @@ function findRepo(payload: GitHubPushPayload, repos: RepoEntry[]): RepoEntry | n
 async function handleWebhook(req: Request, repos: RepoEntry[], webhookSecret: string): Promise<Response> {
   const body = await req.text();
 
-  // Signature doğrula
+  // Verify signature
   const signature = req.headers.get("x-hub-signature-256");
   if (!signature) {
-    console.log(chalk.red("[Webhook] Signature header eksik, reddedildi."));
+    console.log(chalk.red("[Webhook] Missing signature header, rejected."));
     return new Response("Missing signature", { status: 401 });
   }
 
   if (!verifySignature(body, signature, webhookSecret)) {
-    console.log(chalk.red("[Webhook] Geçersiz signature, reddedildi."));
+    console.log(chalk.red("[Webhook] Invalid signature, rejected."));
     return new Response("Invalid signature", { status: 401 });
   }
 
-  // Sadece push event'lerini işle
+  // Only process push events
   const event = req.headers.get("x-github-event");
   if (event !== "push") {
-    console.log(chalk.gray(`[Webhook] Event: ${event}, atlanıyor.`));
+    console.log(chalk.gray(`[Webhook] Event: ${event}, skipping.`));
     return new Response("Ignored event", { status: 200 });
   }
 
-  // Payload parse
+  // Parse payload
   let payload: GitHubPushPayload;
   try {
     payload = JSON.parse(body);
@@ -105,31 +105,31 @@ async function handleWebhook(req: Request, repos: RepoEntry[], webhookSecret: st
     return new Response("Invalid JSON", { status: 400 });
   }
 
-  // Repo eşleştir
+  // Match repo
   const repo = findRepo(payload, repos);
   if (!repo) {
-    console.log(chalk.yellow(`[Webhook] Bilinmeyen repo: ${payload.repository.full_name}`));
+    console.log(chalk.yellow(`[Webhook] Unknown repo: ${payload.repository.full_name}`));
     return new Response("Unknown repository", { status: 200 });
   }
 
-  // Branch kontrolü
+  // Branch check
   const pushBranch = payload.ref.replace("refs/heads/", "");
   const targetBranch = repo.branch ?? "main";
   if (pushBranch !== targetBranch) {
     console.log(
-      chalk.gray(`[Webhook] ${repo.name}: Push branch ${pushBranch}, hedef ${targetBranch}, atlanıyor.`)
+      chalk.gray(`[Webhook] ${repo.name}: Push branch ${pushBranch}, target ${targetBranch}, skipping.`)
     );
     return new Response("Branch mismatch", { status: 200 });
   }
 
-  // Build'i sıraya ekle
-  console.log(chalk.blue(`[Webhook] ${repo.name}: Push alındı, build sıraya ekleniyor...`));
+  // Enqueue build
+  console.log(chalk.blue(`[Webhook] ${repo.name}: Push received, queuing build...`));
 
   buildQueue.enqueue(repo.name, async () => {
-    console.log(chalk.blue(`\n[Pipeline] ${repo.name}: Başlatılıyor...`));
+    console.log(chalk.blue(`\n[Pipeline] ${repo.name}: Starting...`));
     const repoDir = await cloneOrPull(repo.name, repo.githubUrl, targetBranch);
     await deployScript(repoDir);
-    console.log(chalk.bold.green(`[Pipeline] ${repo.name}: Tamamlandı.`));
+    console.log(chalk.bold.green(`[Pipeline] ${repo.name}: Completed.`));
 
     // Discord changelog (non-fatal)
     try {
@@ -174,7 +174,7 @@ export async function startServer(): Promise<void> {
 
   console.log(chalk.bold("\n9am-build Webhook Server\n"));
   console.log(chalk.gray(`Port: ${port}`));
-  console.log(chalk.gray(`İzlenen repolar: ${config.repos.map((r) => r.name).join(", ")}\n`));
+  console.log(chalk.gray(`Monitored repos: ${config.repos.map((r) => r.name).join(", ")}\n`));
 
   Bun.serve({
     port,
@@ -196,5 +196,5 @@ export async function startServer(): Promise<void> {
     },
   });
 
-  console.log(chalk.bold.green(`Server ${port} portunda başlatıldı.\n`));
+  console.log(chalk.bold.green(`Server started on port ${port}.\n`));
 }
