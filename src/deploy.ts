@@ -63,12 +63,8 @@ export async function deployScript(scriptDir: string, options: DeployOptions = {
     console.log(chalk.bold.green("All versions uploaded successfully!"));
     await context.close();
   } catch (err) {
-    console.log(chalk.red("Upload error — keeping browser open for inspection."));
-    console.log(chalk.yellow("Process will exit when you close the browser."));
-    // Wait until browser is closed
-    await new Promise<void>((resolve) => {
-      context.on("disconnected", resolve);
-    });
+    console.log(chalk.red(`Upload error: ${err instanceof Error ? err.message : String(err)}`));
+    await context.close().catch(() => {});
     throw err;
   }
 
