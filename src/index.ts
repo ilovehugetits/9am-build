@@ -4,7 +4,8 @@ import { deployScript } from "./deploy.js";
 import { startServer, loadReposConfig } from "./server.js";
 import { registerPasskey } from "./register-passkey.js";
 import { generateChangelog } from "./changelog.js";
-import { sendDiscordChangelog } from "./discord.js";
+import { sendDiscordChangelog, classifyReleaseType } from "./discord.js";
+import { readManifestVersion } from "./github.js";
 
 async function main() {
   const command = process.argv[2];
@@ -83,7 +84,13 @@ async function main() {
     console.log(chalk.green(`Changelog:\n${changelog}\n`));
 
     // Send to Discord
-    await sendDiscordChangelog({ repoName, changelog });
+    const version = await readManifestVersion(repoDir);
+    await sendDiscordChangelog({
+      repoName,
+      changelog,
+      version: version ?? undefined,
+      releaseType: classifyReleaseType([commitMessage]),
+    });
     return;
   }
 
