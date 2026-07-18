@@ -6,7 +6,7 @@ import { cloneOrPull, getGitDiff } from "./git.js";
 import { deployScript } from "./deploy.js";
 import { buildQueue } from "./queue.js";
 import { generateChangelog } from "./changelog.js";
-import { sendDiscordChangelog } from "./discord.js";
+import { sendDiscordChangelog, classifyReleaseType } from "./discord.js";
 
 export interface RepoEntry {
   name: string;
@@ -128,33 +128,44 @@ async function handleWebhook(req: Request, repos: RepoEntry[], webhookSecret: st
   buildQueue.enqueue(repo.name, async () => {
     console.log(chalk.blue(`\n[Pipeline] ${repo.name}: Starting...`));
     const repoDir = await cloneOrPull(repo.name, repo.githubUrl, targetBranch);
-    await deployScript(repoDir);
+    const release = await deployScript(repoDir);
     console.log(chalk.bold.green(`[Pipeline] ${repo.name}: Completed.`));
 
-    // Discord changelog (non-fatal)
+    // Discord changelog (non-fatal) — only announce brand-new releases so the
+    // same version is never posted twice
     try {
-      console.log(chalk.gray(`[Changelog] ${repo.name}: Generating...`));
+      if (release?.status !== "created") {
+        console.log(
+          chalk.gray(
+            `[Discord] ${repo.name}: No new GitHub release (${release?.status ?? "failed"}), skipping notification.`
+          )
+        );
+      } else {
+        console.log(chalk.gray(`[Changelog] ${repo.name}: Generating...`));
 
-      const isInitialPush = payload.before === "0000000000000000000000000000000000000000";
-      const diff = isInitialPush ? "" : getGitDiff(repoDir, payload.before, payload.after);
+        const isInitialPush = payload.before === "0000000000000000000000000000000000000000";
+        const diff = isInitialPush ? "" : getGitDiff(repoDir, payload.before, payload.after);
 
-      const changelog = await generateChangelog({
-        repoName: repo.name,
-        commits: payload.commits.map((c) => ({
-          message: c.message,
-          added: c.added,
-          removed: c.removed,
-          modified: c.modified,
-        })),
-        diff,
-      });
+        const changelog = await generateChangelog({
+          repoName: repo.name,
+          commits: payload.commits.map((c) => ({
+            message: c.message,
+            added: c.added,
+            removed: c.removed,
+            modified: c.modified,
+          })),
+          diff,
+        });
 
-      console.log(chalk.gray(`[Changelog] ${repo.name}:\n${changelog}`));
+        console.log(chalk.gray(`[Changelog] ${repo.name}:\n${changelog}`));
 
-      await sendDiscordChangelog({
-        repoName: repo.name,
-        changelog,
-      });
+        await sendDiscordChangelog({
+          repoName: repo.name,
+          changelog,
+          version: release.version,
+          releaseType: classifyReleaseType(payload.commits.map((c) => c.message)),
+        });
+      }
     } catch (err: any) {
       console.error(chalk.yellow(`[Changelog] ${repo.name}: Failed (non-fatal): ${err.message}`));
     }

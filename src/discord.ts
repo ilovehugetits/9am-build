@@ -2,9 +2,23 @@ import chalk from "chalk";
 
 const BRAND_COLOR = 0xf3dd70;
 
+export type ReleaseType = "release" | "hotfix";
+
+const FIX_COMMIT_PATTERN = /^\s*(hotfix|bugfix|fix|patch)\b/i;
+
+export function classifyReleaseType(commitMessages: string[]): ReleaseType {
+  const messages = commitMessages.filter((m) => m.trim());
+  if (messages.length > 0 && messages.every((m) => FIX_COMMIT_PATTERN.test(m))) {
+    return "hotfix";
+  }
+  return "release";
+}
+
 export interface DiscordChangelogOptions {
   repoName: string;
   changelog: string;
+  version?: string;
+  releaseType?: ReleaseType;
 }
 
 export async function sendDiscordChangelog(options: DiscordChangelogOptions): Promise<void> {
@@ -14,8 +28,12 @@ export async function sendDiscordChangelog(options: DiscordChangelogOptions): Pr
     return;
   }
 
+  const name = options.version ? `${options.repoName} v${options.version}` : options.repoName;
+  const title =
+    options.releaseType === "hotfix" ? `${name} — hotfix 🔧` : `${name} released! 🚀`;
+
   const embed = {
-    title: `${options.repoName} updated! 🚀`,
+    title,
     description: `${options.changelog}\n\n📦 Download the latest version from [CFX Portal](https://portal.cfx.re/assets/granted-assets?page=1&sort=asset.updated_at&direction=asc&search=${encodeURIComponent(options.repoName)}).`,
     color: BRAND_COLOR,
     timestamp: new Date().toISOString(),
