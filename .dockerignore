@@ -1,0 +1,13 @@
+node_modules
+repos
+dist
+.build
+*.zip
+.git
+.env
+auth-state.json
+passkey-credential.json
+.claude
+.vscode
+.idea
+.DS_Store
