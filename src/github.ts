@@ -7,6 +7,15 @@ export interface GitHubReleaseOptions {
   zipPaths: string[];
 }
 
+export interface GitHubReleaseResult {
+  // "created" = brand-new release, "existing" = tag already had a release
+  // (version not bumped), "skipped" = missing token/remote/version
+  status: "created" | "existing" | "skipped";
+  version?: string;
+  tag?: string;
+  htmlUrl?: string;
+}
+
 interface GitHubRepoRef {
   owner: string;
   repo: string;
@@ -90,29 +99,29 @@ async function uploadReleaseAsset(
   console.log(chalk.green(`[GitHub] Asset uploaded: ${assetName}`));
 }
 
-export async function createGitHubRelease(options: GitHubReleaseOptions): Promise<void> {
+export async function createGitHubRelease(options: GitHubReleaseOptions): Promise<GitHubReleaseResult> {
   const token = process.env.GITHUB_TOKEN;
   if (!token) {
     console.log(chalk.yellow("[GitHub] GITHUB_TOKEN is not set, skipping release."));
-    return;
+    return { status: "skipped" };
   }
 
   const remoteUrl = gitOutput(options.repoDir, ["config", "--get", "remote.origin.url"]);
   if (!remoteUrl) {
     console.log(chalk.yellow("[GitHub] No git remote found, skipping release."));
-    return;
+    return { status: "skipped" };
   }
 
   const repoRef = parseGitHubRepo(remoteUrl);
   if (!repoRef) {
     console.log(chalk.yellow(`[GitHub] Remote is not a GitHub URL (${remoteUrl}), skipping release.`));
-    return;
+    return { status: "skipped" };
   }
 
   const version = await readManifestVersion(options.repoDir);
   if (!version) {
     console.log(chalk.yellow("[GitHub] Could not read version from fxmanifest.lua, skipping release."));
-    return;
+    return { status: "skipped" };
   }
 
   const tag = `v${version}`;
@@ -121,6 +130,8 @@ export async function createGitHubRelease(options: GitHubReleaseOptions): Promis
   console.log(chalk.gray(`[GitHub] Creating release ${tag} for ${repoRef.owner}/${repoRef.repo}...`));
 
   let releaseId: number;
+  let releaseStatus: GitHubReleaseResult["status"];
+  let htmlUrl: string | undefined;
   const createResponse = await githubRequest(
     token,
     "POST",
@@ -145,14 +156,18 @@ export async function createGitHubRelease(options: GitHubReleaseOptions): Promis
       const text = await existingResponse.text();
       throw new Error(`Could not fetch existing release ${tag} (${existingResponse.status}): ${text}`);
     }
-    const existing = (await existingResponse.json()) as { id: number };
+    const existing = (await existingResponse.json()) as { id: number; html_url: string };
     releaseId = existing.id;
+    releaseStatus = "existing";
+    htmlUrl = existing.html_url;
   } else if (!createResponse.ok) {
     const text = await createResponse.text();
     throw new Error(`Release creation failed (${createResponse.status}): ${text}`);
   } else {
     const created = (await createResponse.json()) as { id: number; html_url: string };
     releaseId = created.id;
+    releaseStatus = "created";
+    htmlUrl = created.html_url;
     console.log(chalk.green(`[GitHub] Release created: ${created.html_url}`));
   }
 
@@ -161,4 +176,6 @@ export async function createGitHubRelease(options: GitHubReleaseOptions): Promis
   }
 
   console.log(chalk.green(`[GitHub] Release ${tag} is ready with ${options.zipPaths.length} asset(s).`));
+
+  return { status: releaseStatus, version, tag, htmlUrl };
 }

@@ -5,13 +5,16 @@ import { loadConfig } from "./config.js";
 import { buildVersions } from "./build.js";
 import { getAuthenticatedContext } from "./auth.js";
 import { uploadAsset } from "./upload.js";
-import { createGitHubRelease } from "./github.js";
+import { createGitHubRelease, type GitHubReleaseResult } from "./github.js";
 
 interface DeployOptions {
   buildOnly?: boolean;
 }
 
-export async function deployScript(scriptDir: string, options: DeployOptions = {}): Promise<void> {
+export async function deployScript(
+  scriptDir: string,
+  options: DeployOptions = {}
+): Promise<GitHubReleaseResult | null> {
   const resolvedDir = path.resolve(scriptDir);
   console.log(chalk.bold(`\n9am-build — ${resolvedDir}\n`));
 
@@ -44,7 +47,7 @@ export async function deployScript(scriptDir: string, options: DeployOptions = {
 
   if (options.buildOnly) {
     console.log(chalk.bold.green("Zips ready! (.build/ directory)\n"));
-    return;
+    return null;
   }
 
   // 4. Auth
@@ -70,9 +73,10 @@ export async function deployScript(scriptDir: string, options: DeployOptions = {
   }
 
   // 6. GitHub release with the built zips (non-fatal)
+  let release: GitHubReleaseResult | null = null;
   try {
     const zipPaths = [zips.escrowZip, zips.openZip].filter((p): p is string => !!p);
-    await createGitHubRelease({ repoDir: resolvedDir, zipPaths });
+    release = await createGitHubRelease({ repoDir: resolvedDir, zipPaths });
   } catch (err) {
     console.log(
       chalk.yellow(`GitHub release failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`)
@@ -82,4 +86,6 @@ export async function deployScript(scriptDir: string, options: DeployOptions = {
   // 7. Cleanup
   await rm(outputDir, { recursive: true, force: true });
   console.log(chalk.gray("Temporary files cleaned up.\n"));
+
+  return release;
 }
