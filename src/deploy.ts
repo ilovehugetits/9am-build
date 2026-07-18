@@ -5,6 +5,7 @@ import { loadConfig } from "./config.js";
 import { buildVersions } from "./build.js";
 import { getAuthenticatedContext } from "./auth.js";
 import { uploadAsset } from "./upload.js";
+import { createGitHubRelease } from "./github.js";
 
 interface DeployOptions {
   buildOnly?: boolean;
@@ -68,7 +69,17 @@ export async function deployScript(scriptDir: string, options: DeployOptions = {
     throw err;
   }
 
-  // 6. Cleanup
+  // 6. GitHub release with the built zips (non-fatal)
+  try {
+    const zipPaths = [zips.escrowZip, zips.openZip].filter((p): p is string => !!p);
+    await createGitHubRelease({ repoDir: resolvedDir, zipPaths });
+  } catch (err) {
+    console.log(
+      chalk.yellow(`GitHub release failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`)
+    );
+  }
+
+  // 7. Cleanup
   await rm(outputDir, { recursive: true, force: true });
   console.log(chalk.gray("Temporary files cleaned up.\n"));
 }

@@ -1,9 +1,9 @@
 # 9am-build
 
-Automated build & deploy pipeline for FiveM (Cfx.re) resources. Push to GitHub, get your script on the Cfx.re Portal — with AI-powered changelogs posted to Discord.
+Automated build & deploy pipeline for FiveM (Cfx.re) resources. Push to GitHub, get your script on the Cfx.re Portal — with AI-powered changelogs posted to Discord and versioned GitHub releases.
 
 ```
-git push  -->  webhook  -->  build zip  -->  upload to portal  -->  changelog to Discord
+git push  -->  webhook  -->  build zip  -->  upload to portal  -->  GitHub release  -->  changelog to Discord
 ```
 
 ## Quick Start
@@ -43,6 +43,7 @@ WEBHOOK_SECRET=your-webhook-secret
 PORT=9000
 DISCORD_CHANGELOG_WEBHOOK=https://discord.com/api/webhooks/...
 ANTHROPIC_API_KEY=sk-ant-...
+GITHUB_TOKEN=ghp_...
 ```
 
 > **Generating a strong `WEBHOOK_SECRET`:**
@@ -227,6 +228,22 @@ pm2 stop 9am-build       # stop
 pm2 delete 9am-build     # remove
 ```
 
+## GitHub Releases
+
+After a successful portal upload, the pipeline creates a GitHub release on the resource's repo, tagged with the version from `fxmanifest.lua` (e.g. `v1.0.3`), with auto-generated release notes and the built zips attached as assets (`<name>-escrow.zip`, `<name>-open.zip`).
+
+1. Create a personal access token with `repo` scope (classic) or `Contents: Read and write` permission (fine-grained) for your resource repos
+2. Add it to `.env`:
+
+   ```env
+   GITHUB_TOKEN=ghp_...
+   ```
+
+- The release targets the exact commit that was built
+- If a release for the tag already exists, the zips are attached to it (existing assets with the same name are kept)
+- If `GITHUB_TOKEN` is not set, this step is skipped silently
+- Failures are non-fatal — the deploy still succeeds if the release fails
+
 ## Discord Changelog
 
 Automatically posts AI-generated changelogs to Discord after each deployment.
@@ -254,6 +271,7 @@ Automatically posts AI-generated changelogs to Discord after each deployment.
 | `OPENROUTER_API_KEY` | Changelog* | OpenRouter API key (takes priority over Anthropic) |
 | `OPENROUTER_MODEL` | No | OpenRouter model (default: `anthropic/claude-sonnet-4.6`) |
 | `DISCORD_CHANGELOG_WEBHOOK` | No | Discord webhook URL |
+| `GITHUB_TOKEN` | No | GitHub token for creating releases with build zips |
 
 *At least one API key required for changelog generation.
 
@@ -269,6 +287,7 @@ Automatically posts AI-generated changelogs to Discord after each deployment.
 │   ├── auth.ts             # Cfx.re Portal passkey authentication
 │   ├── upload.ts           # Puppeteer portal upload automation
 │   ├── git.ts              # Git clone / pull / diff
+│   ├── github.ts           # GitHub release creation & asset upload
 │   ├── server.ts           # GitHub webhook HTTP server
 │   ├── queue.ts            # Serial build queue (latest-wins)
 │   ├── changelog.ts        # AI changelog generation
