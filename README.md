@@ -289,10 +289,13 @@ Automatically posts AI-generated changelogs to Discord after each deployment.
 │   ├── cfx/                   # Cfx portal layer (browser only for login)
 │   │   ├── api.ts             # portal-api REST client + chunking/error helpers
 │   │   ├── upload.ts          # Chunked asset upload + version-cap recovery
-│   │   ├── requester.ts       # Playwright APIRequestContext → Requester adapter
+│   │   ├── requester.ts       # fetch-based Requester (Cookie header from session)
 │   │   ├── session.ts         # 3-tier ensureSession (jwt → SSO → passkey)
 │   │   ├── login.ts           # Passkey + SSO-only portal login flows
-│   │   └── passkey.ts         # WebAuthn virtual authenticator + credential store
+│   │   ├── passkey.ts         # WebAuthn virtual authenticator + credential store
+│   │   ├── storage-state.ts   # Playwright storageState + legacy migration
+│   │   ├── run-browser.ts     # Spawns the Node browser runner from Bun
+│   │   └── browser-runner.ts  # Node entry for login/register (Playwright)
 │   ├── core/                  # Build & repo primitives
 │   │   ├── config.ts          # Load & validate upload-config.json
 │   │   ├── build.ts           # Zip creation & frontend builds
