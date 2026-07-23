@@ -1,4 +1,4 @@
-import { access } from "fs/promises";
+import { access, chmod } from "fs/promises";
 import path from "path";
 import chalk from "chalk";
 import { chromium, request, type APIRequestContext, type Browser } from "playwright";
@@ -31,7 +31,15 @@ async function apiSessionFromState(): Promise<APIRequestContext | null> {
   return null;
 }
 
-const LAUNCH_ARGS = ["--no-sandbox", "--disable-setuid-sandbox", "--disable-blink-features=AutomationControlled"];
+// Keep the Chromium sandbox ON by default (secure locally). Containers that run
+// as root (e.g. Coolify) can opt out by setting CHROMIUM_NO_SANDBOX=1.
+function launchArgs(): string[] {
+  const args = ["--disable-blink-features=AutomationControlled"];
+  if (process.env.CHROMIUM_NO_SANDBOX === "1") {
+    args.push("--no-sandbox", "--disable-setuid-sandbox");
+  }
+  return args;
+}
 
 export async function ensureSession(): Promise<Session> {
   // Tier 1: existing jwt still valid — no browser.
@@ -42,7 +50,7 @@ export async function ensureSession(): Promise<Session> {
   }
 
   // Tiers 2 & 3 need a browser.
-  const browser: Browser = await chromium.launch({ headless: true, args: LAUNCH_ARGS });
+  const browser: Browser = await chromium.launch({ headless: true, args: launchArgs() });
   try {
     const hasState = await fileExists(AUTH_STATE_FILE);
     const context = await browser.newContext(hasState ? { storageState: AUTH_STATE_FILE } : {});
@@ -64,6 +72,7 @@ export async function ensureSession(): Promise<Session> {
     if (!ok) throw new Error("Portal login failed (SSO + passkey both failed).");
 
     await context.storageState({ path: AUTH_STATE_FILE });
+    await chmod(AUTH_STATE_FILE, 0o600).catch(() => {}); // portal jwt + forum cookies — owner-only
     const apiCtx = await request.newContext({ storageState: AUTH_STATE_FILE });
     return { request: playwrightRequester(apiCtx), close: () => apiCtx.dispose() };
   } finally {

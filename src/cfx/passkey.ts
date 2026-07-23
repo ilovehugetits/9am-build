@@ -1,4 +1,4 @@
-import { access, readFile, writeFile } from "fs/promises";
+import { access, chmod, readFile, writeFile } from "fs/promises";
 import path from "path";
 import type { Page, CDPSession } from "playwright";
 
@@ -68,5 +68,8 @@ export async function loadCredential(): Promise<SavedCredential | null> {
 }
 
 export async function saveCredential(credential: SavedCredential): Promise<void> {
-  await writeFile(CREDENTIAL_FILE, JSON.stringify(credential, null, 2), "utf-8");
+  // Holds a WebAuthn private key — keep it owner-only (no-op on Windows,
+  // enforced on the Linux/Coolify host where it matters).
+  await writeFile(CREDENTIAL_FILE, JSON.stringify(credential, null, 2), { encoding: "utf-8", mode: 0o600 });
+  await chmod(CREDENTIAL_FILE, 0o600).catch(() => {});
 }
