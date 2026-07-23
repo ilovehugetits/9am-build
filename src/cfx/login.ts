@@ -6,8 +6,17 @@ import { API_BASE } from "./api.js";
 export const PORTAL_URL = "https://portal.cfx.re/assets/created-assets";
 
 async function portalAuthed(page: Page): Promise<boolean> {
-  const res = await page.request.get(`${API_BASE}/v1/me`);
-  return res.status() === 200;
+  // Run the auth check as an in-page fetch (credentials included), mirroring the
+  // portal app. Cross-origin calls (e.g. while briefly on forum.cfx.re) are
+  // CORS-blocked and throw — treat those as "not yet authed".
+  try {
+    return await page.evaluate(async (base) => {
+      const r = await fetch(`${base}/v1/me`, { credentials: "include" });
+      return r.status === 200;
+    }, API_BASE);
+  } catch {
+    return false;
+  }
 }
 
 /** From any state on the portal, click "Sign in with" and wait for either the
