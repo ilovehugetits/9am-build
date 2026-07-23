@@ -1,6 +1,6 @@
 {
   "name": "9am-build",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "CfxLua test runner and build pipeline for FiveM (Cfx.re) resources",
   "type": "module",
   "license": "MIT",
