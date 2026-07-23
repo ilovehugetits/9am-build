@@ -6,6 +6,108 @@ Automated build & deploy pipeline for FiveM (Cfx.re) resources. Push to GitHub, 
 git push  -->  webhook  -->  build zip  -->  upload to portal  -->  GitHub release  -->  changelog to Discord
 ```
 
+Plus a CfxLua test harness you can run in any resource folder, with no clone and no setup:
+
+```bash
+cd path/to/your-resource
+npx 9am-build test        # or: bunx 9am-build test
+```
+
+## Testing Resources (`9am-build test`)
+
+Runs your resource's `*.test.lua` files in a real Lua 5.4 VM against a simulated
+FiveM environment — no server, no credentials, no network. This is the only
+command the published npm package exposes; everything else below requires a
+clone of this repo.
+
+```bash
+npx 9am-build test              # run every *.test.lua under the current folder
+npx 9am-build test ./some/dir   # or point it somewhere else
+npx 9am-build test --json       # machine-readable results
+npx 9am-build test --strict     # exit 1 when no test files exist
+```
+
+### Writing a test
+
+Test files sit anywhere in the resource (except `web/`) and end in `.test.lua`.
+The API is a busted-compatible subset.
+
+```lua
+-- server/purchase.test.lua
+describe('parseColorSelection', function()
+  before_each(function()
+    harness.load('shared/config.lua', 'server/helpers.lua', 'server/purchase.lua')
+  end)
+
+  it('converts a custom hex to an RGB triple', function()
+    local index, hex, color1 = parseColorSelection(-1, '#FF8000')
+    assert.equal(-1, index)
+    assert.same({ 255, 128, 0 }, color1)
+  end)
+
+  it('denies a player with no ace permission', function()
+    harness.stub('Bridge', { GetPlayer = function() return nil end })
+    assert.falsy(IsVehicleshopAdmin(1))
+  end)
+end)
+```
+
+| Helper | Purpose |
+|---|---|
+| `harness.load(...)` | Reset globals to a clean state, then load the named resource files in order |
+| `harness.stub(name, value)` | Override a global |
+| `harness.callback(name, source, ...)` | Invoke a handler registered via `lib.callback.register` |
+| `harness.trigger(event, ...)` | Fire handlers registered via `RegisterNetEvent`/`AddEventHandler` |
+| `harness.calls(kind)` | Recorded side effects — `'sql'`, `'clientEvent'`, `'notify'`, `'export'` |
+| `harness.threads()` / `harness.runThread(i)` | `CreateThread` bodies, recorded rather than run |
+| `assert.equal / same / truthy / falsy / has_error` | Assertions |
+
+`CreateThread` is recorded, never executed — resource code routinely wraps an
+infinite `while true do ... end` loop at file scope, which would hang the
+runner. Step one explicitly with `harness.runThread(1)` when a test needs it.
+
+### What the environment provides
+
+CFX natives (`IsPlayerAceAllowed`, `TriggerClientEvent`, `vector3`/`vector4`,
+`exports`, …), ox_lib (`lib.callback`, `lib.notify`, `locale()`, …) and oxmysql
+(`MySQL.query/insert/scalar`, both async and `.await` forms) are stubbed out of
+the box, and every SQL query, client event and notification is recorded.
+
+Any global the environment does not know resolves to `nil`, exactly as in real
+Lua, and the access is recorded. When a test fails, the report lists which
+unknown globals it read and where — usually pointing straight at the native you
+need to stub.
+
+### Reading a failure
+
+Output is plain, greppable, and every location is a `path:line` anchor:
+
+```
+FAIL server/purchase.test.lua:16  parseColorSelection > returns 0 for unknown index
+
+  assertion  assert.equal
+  expected   0
+  actual     nil
+
+  traceback
+    server/purchase.lua:21: in function 'parseColorSelection'
+
+  source server/purchase.lua:21
+      20 |         local gtaColor = Config.CatalogColors[colorIndex] or 0
+    > 21 |         color1 = gtaColor
+
+  unstubbed globals read during this test
+    GetVehicleNumberPlateText  server/purchase.lua:88
+
+9 tests  8 passed  1 failed  157ms
+```
+
+Exit code is 0 when everything passes, 1 on any failure. "No test files found"
+exits 0 unless you pass `--strict`.
+
+> Add `**/*.test.lua` to `exclude` in your `upload-config.json` so tests never
+> ship inside the escrow or open zip.
+
 ## Quick Start
 
 ```bash
@@ -170,6 +272,7 @@ You can define one or both versions. Each gets its own zip and asset upload.
 
 | Command | Description |
 |---------|-------------|
+| `npx 9am-build test` | Run `*.test.lua` in a resource folder — the only published command, needs no clone |
 | `bun run build <name>` | Build zip(s) only — no upload |
 | `bun run deploy <name>` | Build + upload to Cfx.re Portal + GitHub release |
 | `bun run release <name>` | Build + GitHub release only — never touches the portal or opens a browser |
@@ -285,7 +388,18 @@ Automatically posts AI-generated changelogs to Discord after each deployment.
 ```
 9am-build/
 ├── src/
-│   ├── index.ts               # CLI entry point & command router
+│   ├── cli.ts                 # Published npm entry — `9am-build test` only
+│   ├── index.ts               # Repo-only CLI entry point & command router
+│   ├── lua/                   # CfxLua test harness (the published package)
+│   │   ├── runtime.ts         # wasmoon VM lifecycle, sandbox, chunk naming
+│   │   ├── harness.lua        # describe/it/assert + harness.* (pure Lua)
+│   │   ├── discover.ts        # Find **/*.test.lua
+│   │   ├── report.ts          # Agent-first text and --json rendering
+│   │   ├── types.ts           # Result shapes
+│   │   └── env/               # Simulated FiveM environment
+│   │       ├── cfx.ts         # CFX natives, events, vectors, exports
+│   │       ├── oxlib.ts       # lib.callback / notify / locale
+│   │       └── oxmysql.ts     # MySQL.* with call recording
 │   ├── cfx/                   # Cfx portal layer (browser only for login)
 │   │   ├── api.ts             # portal-api REST client + chunking/error helpers
 │   │   ├── upload.ts          # Chunked asset upload + version-cap recovery
@@ -306,6 +420,7 @@ Automatically posts AI-generated changelogs to Discord after each deployment.
 │   │   ├── discord.ts         # Discord webhook notifications
 │   │   └── changelog.ts       # AI changelog generation
 │   ├── commands/              # One file per CLI command
+│   │   ├── test.ts            # Run *.test.lua (published)
 │   │   ├── build.ts           # Zip only
 │   │   ├── deploy.ts          # Build + portal upload + GitHub release
 │   │   ├── release.ts         # Build + GitHub release only (no portal)

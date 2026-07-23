@@ -1,8 +1,32 @@
 {
   "name": "9am-build",
-  "version": "1.0.0",
-  "description": "FiveM Cfx Portal auto-upload tool",
+  "version": "1.1.0",
+  "description": "Test harness and build pipeline for FiveM (Cfx.re) resources",
   "type": "module",
+  "license": "MIT",
+  "bin": {
+    "9am-build": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "keywords": [
+    "fivem",
+    "cfx",
+    "lua",
+    "test",
+    "harness",
+    "gta5"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ilovehugetits/9am-build.git"
+  },
   "scripts": {
     "deploy": "bun src/index.ts deploy",
     "build": "bun src/index.ts build",
@@ -11,20 +35,23 @@
     "register-passkey": "bun src/index.ts register",
     "debug": "bun src/index.ts debug",
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:dist": "tsc -p tsconfig.build.json && node scripts/copy-lua.mjs",
+    "prepublishOnly": "bun run build:dist"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.78.0",
-    "archiver": "^7.0.1",
     "chalk": "^5.4.1",
     "glob": "^11.0.1",
-    "playwright": "^1.61.1",
-    "tsx": "^4.19.3"
+    "wasmoon": "^1.16.0"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.78.0",
     "@types/archiver": "^6.0.3",
     "@types/bun": "^1.3.9",
     "@types/node": "^22.13.5",
+    "archiver": "^7.0.1",
+    "playwright": "^1.61.1",
+    "tsx": "^4.19.3",
     "typescript": "^5.7.3"
   }
 }
