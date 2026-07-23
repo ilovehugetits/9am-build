@@ -6,107 +6,12 @@ Automated build & deploy pipeline for FiveM (Cfx.re) resources. Push to GitHub, 
 git push  -->  webhook  -->  build zip  -->  upload to portal  -->  GitHub release  -->  changelog to Discord
 ```
 
-Plus a CfxLua test harness you can run in any resource folder, with no clone and no setup:
+Plus a CfxLua test runner you can use in any resource folder, with no clone and no setup:
 
 ```bash
 cd path/to/your-resource
 npx 9am-build test        # or: bunx 9am-build test
 ```
-
-## Testing Resources (`9am-build test`)
-
-Runs your resource's `*.test.lua` files in a real Lua 5.4 VM against a simulated
-FiveM environment — no server, no credentials, no network. This is the only
-command the published npm package exposes; everything else below requires a
-clone of this repo.
-
-```bash
-npx 9am-build test              # run every *.test.lua under the current folder
-npx 9am-build test ./some/dir   # or point it somewhere else
-npx 9am-build test --json       # machine-readable results
-npx 9am-build test --strict     # exit 1 when no test files exist
-```
-
-### Writing a test
-
-Test files sit anywhere in the resource (except `web/`) and end in `.test.lua`.
-The API is a busted-compatible subset.
-
-```lua
--- server/purchase.test.lua
-describe('parseColorSelection', function()
-  before_each(function()
-    harness.load('shared/config.lua', 'server/helpers.lua', 'server/purchase.lua')
-  end)
-
-  it('converts a custom hex to an RGB triple', function()
-    local index, hex, color1 = parseColorSelection(-1, '#FF8000')
-    assert.equal(-1, index)
-    assert.same({ 255, 128, 0 }, color1)
-  end)
-
-  it('denies a player with no ace permission', function()
-    harness.stub('Bridge', { GetPlayer = function() return nil end })
-    assert.falsy(IsVehicleshopAdmin(1))
-  end)
-end)
-```
-
-| Helper | Purpose |
-|---|---|
-| `harness.load(...)` | Reset globals to a clean state, then load the named resource files in order |
-| `harness.stub(name, value)` | Override a global |
-| `harness.callback(name, source, ...)` | Invoke a handler registered via `lib.callback.register` |
-| `harness.trigger(event, ...)` | Fire handlers registered via `RegisterNetEvent`/`AddEventHandler` |
-| `harness.calls(kind)` | Recorded side effects — `'sql'`, `'clientEvent'`, `'notify'`, `'export'` |
-| `harness.threads()` / `harness.runThread(i)` | `CreateThread` bodies, recorded rather than run |
-| `assert.equal / same / truthy / falsy / has_error` | Assertions |
-
-`CreateThread` is recorded, never executed — resource code routinely wraps an
-infinite `while true do ... end` loop at file scope, which would hang the
-runner. Step one explicitly with `harness.runThread(1)` when a test needs it.
-
-### What the environment provides
-
-CFX natives (`IsPlayerAceAllowed`, `TriggerClientEvent`, `vector3`/`vector4`,
-`exports`, …), ox_lib (`lib.callback`, `lib.notify`, `locale()`, …) and oxmysql
-(`MySQL.query/insert/scalar`, both async and `.await` forms) are stubbed out of
-the box, and every SQL query, client event and notification is recorded.
-
-Any global the environment does not know resolves to `nil`, exactly as in real
-Lua, and the access is recorded. When a test fails, the report lists which
-unknown globals it read and where — usually pointing straight at the native you
-need to stub.
-
-### Reading a failure
-
-Output is plain, greppable, and every location is a `path:line` anchor:
-
-```
-FAIL server/purchase.test.lua:16  parseColorSelection > returns 0 for unknown index
-
-  assertion  assert.equal
-  expected   0
-  actual     nil
-
-  traceback
-    server/purchase.lua:21: in function 'parseColorSelection'
-
-  source server/purchase.lua:21
-      20 |         local gtaColor = Config.CatalogColors[colorIndex] or 0
-    > 21 |         color1 = gtaColor
-
-  unstubbed globals read during this test
-    GetVehicleNumberPlateText  server/purchase.lua:88
-
-9 tests  8 passed  1 failed  157ms
-```
-
-Exit code is 0 when everything passes, 1 on any failure. "No test files found"
-exits 0 unless you pass `--strict`.
-
-> Add `**/*.test.lua` to `exclude` in your `upload-config.json` so tests never
-> ship inside the escrow or open zip.
 
 ## Quick Start
 
@@ -383,6 +288,142 @@ Automatically posts AI-generated changelogs to Discord after each deployment.
 
 *At least one API key required for changelog generation.
 
+## CfxLua Unit Tests
+
+Run FiveM resource tests **without a live FXServer** — powered by the [CfxLua CLI](https://github.com/VIRUXE/cfxlua-cli) runtime (LuaGLM 5.4 + mocked natives, `Citizen`, events, exports).
+
+```bash
+# From a resource directory — no clone, no setup
+npx 9am-build test          # or: bunx 9am-build test
+npx 9am-build test --json   # machine-readable results
+npx 9am-build test --strict # exit 1 when no specs exist
+
+# From a clone of this repo
+bun run test:lua ./path/to/my-resource
+bunx 9am-build test my-resource          # repos.json name
+```
+
+The published CLI is compiled to plain ESM and runs on Node ≥ 20.11, so `npx`
+works on machines without Bun.
+
+### Writing tests
+
+Spec files are discovered at `tests/**/*.spec.lua`, `test/**/*.spec.lua`, or any
+co-located `*.test.lua` next to the code it covers (`web/` and `node_modules/`
+are skipped). Override the patterns with `9am-test.json`:
+
+```
+my-resource/
+├── fxmanifest.lua
+├── server/
+│   └── main.lua
+├── tests/
+│   └── pricing.spec.lua
+└── 9am-test.json          # optional
+```
+
+Example spec (`tests/pricing.spec.lua`):
+
+```lua
+local pricing = require('server.main')
+
+describe('pricing.withTax', function()
+  it('adds tax to the base price', function()
+    expect(pricing.withTax(100, 0.2)).to.equal(120)
+  end)
+end)
+
+describe('events', function()
+  it('can spy on TriggerEvent', function()
+    local spy = TestHelpers.spy()
+    local restore = TestHelpers.mockGlobal('TriggerEvent', spy)
+    TriggerEvent('shop:open', 1)
+    restore()
+    expect(spy:call_count()).to.equal(1)
+  end)
+end)
+```
+
+### Test API
+
+| Global | Description |
+|--------|-------------|
+| `describe(name, fn)` | Group tests |
+| `it(name, fn)` | Define a test case |
+| `beforeEach(fn)` / `afterEach(fn)` | Per-test hooks |
+| `expect(value).to.equal(x)` | Equality assert |
+| `expect(value).to.deep_equal(x)` | Deep table compare |
+| `expect(fn).to.throw('msg')` | Error assert |
+| `TestHelpers.spy(fn?)` | Callable spy with `.calls`, `:call_count()` |
+| `TestHelpers.mockGlobal(name, value)` | Temporarily replace a global |
+
+`require('server.pricing')` resolves against the resource root through a custom
+searcher that loads the module under a **resource-relative chunk name**, so
+tracebacks read `server/pricing.lua:4` rather than an absolute path that Lua
+truncates into uselessness.
+
+### Reading a failure
+
+Output is plain, greppable, and every location is a `path:line` anchor — no box
+drawing, no status glyphs, and no colour when stdout is not a TTY:
+
+```
+FAIL server/pricing.test.lua:12  withTax > blows up inside resource code
+
+  error      server/pricing.lua:4: attempt to perform arithmetic on a nil value (local 'price')
+
+  traceback
+    server/pricing.lua:4: in function 'server.pricing.withTax'
+    server/pricing.test.lua:13: in field 'fn'
+
+  source server/pricing.lua:4
+      3 | function M.withTax(price, rate)
+    > 4 |   return price + (price * rate)
+      5 | end
+
+24 tests  22 passed  2 failed  26ms
+```
+
+A failed matcher reports `matcher` / `expected` / `actual` as separate lines
+instead of a prose sentence. CfxLua's own `bootstrap.lua` and `scheduler.lua`
+frames are stripped, since they sit beneath every test and say nothing about the
+resource under test. `--json` emits the same data as one document.
+
+Exit code is 0 when everything passes, 1 on any failure. "No specs found" exits
+0 unless you pass `--strict`.
+
+> Add `**/*.test.lua` and `tests/**` to `exclude` in your `upload-config.json`
+> so specs never ship inside the escrow or open zip.
+
+### Configuration (`9am-test.json`)
+
+```json
+{
+  "patterns": ["tests/**/*.spec.lua", "tests/**/*.test.lua"],
+  "include": ["tests/manual.spec.lua"],
+  "exclude": ["**/node_modules/**"]
+}
+```
+
+### Toolchain
+
+On first run, 9am-build downloads CfxLua v1.1.0 to `~/.9am-build/cfxlua/`. Override with:
+
+| Variable | Description |
+|----------|-------------|
+| `CFXLUA_VM` | Path to `cfxlua-vm` binary |
+| `CFXLUA_RUNTIME` | Path to cfxlua `runtime/` directory |
+| `CFXLUA_TIMEOUT` | Script timeout in ms (default: `30000`) |
+| `NINEAM_CFXLUA_CACHE` | Custom cache directory |
+
+On Windows, if the native VM fails to start, 9am-build automatically falls back to the Linux binary via **WSL**.
+
+### Testing the runner itself
+
+`bun test` covers discovery, config parsing and WSL path translation. The end-to-end
+tests spawn the real CfxLua VM; they run automatically once the toolchain is cached
+and can be forced with `NINEAM_CFXLUA_E2E=1 bun test`.
+
 ## Project Structure
 
 ```
@@ -390,16 +431,6 @@ Automatically posts AI-generated changelogs to Discord after each deployment.
 ├── src/
 │   ├── cli.ts                 # Published npm entry — `9am-build test` only
 │   ├── index.ts               # Repo-only CLI entry point & command router
-│   ├── lua/                   # CfxLua test harness (the published package)
-│   │   ├── runtime.ts         # wasmoon VM lifecycle, sandbox, chunk naming
-│   │   ├── harness.lua        # describe/it/assert + harness.* (pure Lua)
-│   │   ├── discover.ts        # Find **/*.test.lua
-│   │   ├── report.ts          # Agent-first text and --json rendering
-│   │   ├── types.ts           # Result shapes
-│   │   └── env/               # Simulated FiveM environment
-│   │       ├── cfx.ts         # CFX natives, events, vectors, exports
-│   │       ├── oxlib.ts       # lib.callback / notify / locale
-│   │       └── oxmysql.ts     # MySQL.* with call recording
 │   ├── cfx/                   # Cfx portal layer (browser only for login)
 │   │   ├── api.ts             # portal-api REST client + chunking/error helpers
 │   │   ├── upload.ts          # Chunked asset upload + version-cap recovery
@@ -426,11 +457,22 @@ Automatically posts AI-generated changelogs to Discord after each deployment.
 │   │   ├── release.ts         # Build + GitHub release only (no portal)
 │   │   ├── register.ts        # Passkey registration (headed)
 │   │   ├── server.ts          # GitHub webhook HTTP server
+│   │   ├── test.ts            # CfxLua unit test runner
 │   │   └── shared.ts          # Shared post-release Discord announcement
+│   ├── cfxlua/                # Offline FiveM Lua test runner (published)
+│   │   ├── discover.ts        # Find *.spec.lua / *.test.lua files
+│   │   ├── ensure-toolchain.ts # Download/cache CfxLua VM (+ WSL fallback)
+│   │   ├── run.ts             # Orchestrate execution, parse the JSON payload
+│   │   ├── report.ts          # Agent-first text and --json rendering
+│   │   ├── spawn.ts           # node:child_process wrapper (Node-compatible)
+│   │   ├── types.ts           # Result shapes
+│   │   └── test/              # Lua side: framework, helpers, runner
 │   └── server-support/
 │       ├── queue.ts           # Serial build queue (latest-wins)
 │       └── repos.ts           # repos.json loader
 ├── repos.json                 # Managed repo list
+├── fixtures/                  # Sample resource for CfxLua test demos
+├── scripts/copy-lua.mjs       # Copy Lua assets into dist on build
 ├── .env.example               # Environment template
 └── package.json
 ```

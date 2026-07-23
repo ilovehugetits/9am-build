@@ -5,6 +5,7 @@ import { buildCommand } from "./commands/build.js";
 import { deployCommand } from "./commands/deploy.js";
 import { releaseCommand } from "./commands/release.js";
 import { registerCommand } from "./commands/register.js";
+import { testCommand } from "./commands/test.js";
 import { startServer } from "./commands/server.js";
 import { announceRelease } from "./commands/shared.js";
 import { generateChangelog } from "./integrations/changelog.js";
@@ -18,6 +19,7 @@ function usage(): never {
   console.error(chalk.red("  bun run release <script>    Build + GitHub release only (no portal)"));
   console.error(chalk.red("  bun run server              Start webhook server"));
   console.error(chalk.red("  bun run register-passkey    Register a forum passkey"));
+  console.error(chalk.red("  bun run test:lua <resource> Run CfxLua unit tests"));
   console.error(chalk.red("  bun src/index.ts debug <repo> <commit>  Changelog test"));
   process.exit(1);
 }
@@ -86,6 +88,20 @@ async function main() {
       if (!scriptName) usage();
       const { dir } = await resolveScriptDir(scriptName);
       return buildCommand(dir);
+    }
+    case "test": {
+      const resourcePath = process.argv[3];
+      if (!resourcePath) usage();
+      const verbose = !process.argv.includes("--quiet");
+      const json = process.argv.includes("--json");
+      const strict = process.argv.includes("--strict");
+      if (resourcePath.startsWith(".") || resourcePath.includes("/") || resourcePath.includes("\\")) {
+        process.exitCode = await testCommand({ dir: resourcePath, verbose, json, strict });
+        return;
+      }
+      const { dir } = await resolveScriptDir(resourcePath);
+      process.exitCode = await testCommand({ dir, verbose, json, strict });
+      return;
     }
     case "release": {
       const scriptName = process.argv[3];

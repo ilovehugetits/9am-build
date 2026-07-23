@@ -1,28 +1,23 @@
-export interface UnstubbedCall {
-  name: string;
-  /** `relative/path.lua:LINE` */
-  at: string;
-}
-
 export type TestStatus = "pass" | "fail" | "error";
 
 export interface TestResult {
-  /** Test file, relative to the resource root, posix separators. */
-  file: string;
-  /** Full name, describe blocks joined with " > ". */
+  suite: string;
+  test: string;
+  /** `suite > test` */
   name: string;
+  /** Spec file, relative to the resource root. */
+  file: string;
   /** Line of the `it(...)` call. */
   line: number;
   status: TestStatus;
   durationMs: number;
-  /** Present when status is "fail". */
-  assertion?: string;
+  /** Present when status is "fail" — the matcher that rejected. */
+  matcher?: string;
   expected?: string;
   actual?: string;
   message?: string;
-  /** Cleaned Lua traceback frames, harness frames removed. */
+  /** Lua traceback frames, framework frames removed. */
   traceback?: string[];
-  unstubbed?: UnstubbedCall[];
 }
 
 export interface RunSummary {
@@ -30,7 +25,10 @@ export interface RunSummary {
   root: string;
   files: string[];
   tests: TestResult[];
-  durationMs: number;
   passed: number;
   failed: number;
+  total: number;
+  durationMs: number;
+  /** CfxLua toolchain version, plus whether it ran through WSL. */
+  runtime: string;
 }

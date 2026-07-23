@@ -1,0 +1,4 @@
+{
+  "patterns": ["tests/**/*.spec.lua"],
+  "exclude": ["**/node_modules/**"]
+}

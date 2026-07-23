@@ -7,15 +7,18 @@ const FRAME_RE = /^(.+?):(\d+):/;
 const CONTEXT_LINES = 2;
 
 /** Pull `path:line` out of the first traceback frame that points at a file. */
-function primaryFrame(frames: string[] | undefined): { file: string; line: number } | null {
-  for (const frame of frames ?? []) {
+function primaryFrame(test: TestResult): { file: string; line: number } | null {
+  for (const frame of test.traceback ?? []) {
     const match = FRAME_RE.exec(frame);
     if (!match) continue;
     const file = match[1].trim();
-    if (file === "[C]" || file.startsWith("[")) continue;
+    // "[C]" is a native frame; a leading "..." means Lua truncated a long
+    // chunk name, so the path cannot be resolved back to a real file.
+    if (file.startsWith("[") || file.startsWith("...")) continue;
     return { file, line: Number(match[2]) };
   }
-  return null;
+  // No usable frame: fall back to the it() location so there is always an anchor.
+  return test.line > 0 ? { file: test.file, line: test.line } : null;
 }
 
 function sourceExcerpt(root: string, file: string, line: number): string[] {
@@ -26,6 +29,8 @@ function sourceExcerpt(root: string, file: string, line: number): string[] {
     return [];
   }
   const lines = content.split(/\r?\n/);
+  if (line < 1 || line > lines.length) return [];
+
   const from = Math.max(1, line - CONTEXT_LINES);
   const to = Math.min(lines.length, line + CONTEXT_LINES);
   const width = String(to).length;
@@ -38,22 +43,18 @@ function sourceExcerpt(root: string, file: string, line: number): string[] {
   return out;
 }
 
-function pad(label: string): string {
-  return label.padEnd(11);
-}
+const pad = (label: string) => label.padEnd(11);
 
 function renderFailure(test: TestResult, root: string): string[] {
   const out: string[] = [];
 
   if (test.status === "fail") {
-    out.push(`  ${pad("assertion")}${test.assertion ?? "unknown"}`);
+    out.push(`  ${pad("matcher")}${test.matcher ?? "unknown"}`);
     out.push(`  ${pad("expected")}${test.expected ?? ""}`);
     out.push(`  ${pad("actual")}${test.actual ?? ""}`);
+    if (test.message) out.push(`  ${pad("message")}${test.message}`);
   } else {
     out.push(`  ${pad("error")}${test.message ?? "unknown error"}`);
-  }
-  if (test.status === "fail" && test.message) {
-    out.push(`  ${pad("message")}${test.message}`);
   }
 
   if (test.traceback?.length) {
@@ -62,7 +63,7 @@ function renderFailure(test: TestResult, root: string): string[] {
     for (const frame of test.traceback) out.push(`    ${frame}`);
   }
 
-  const frame = primaryFrame(test.traceback);
+  const frame = primaryFrame(test);
   if (frame) {
     const excerpt = sourceExcerpt(root, frame.file, frame.line);
     if (excerpt.length) {
@@ -72,28 +73,20 @@ function renderFailure(test: TestResult, root: string): string[] {
     }
   }
 
-  if (test.unstubbed?.length) {
-    const width = Math.max(...test.unstubbed.map((u) => u.name.length));
-    out.push("");
-    out.push("  unstubbed globals read during this test");
-    for (const u of test.unstubbed) {
-      out.push(`    ${u.name.padEnd(width)}  ${u.at}`);
-    }
-  }
-
   return out;
 }
 
 /**
  * Agent-first plain text: greppable `^FAIL` / `^PASS` anchors, every location a
- * `path:line` pair, no box drawing or status glyphs. Chalk drops color
+ * `path:line` pair, no box drawing or status glyphs. Chalk drops colour
  * automatically when stdout is not a TTY, so piped output stays clean.
  */
 export function renderText(summary: RunSummary): string {
   const out: string[] = [];
+  const fileCount = summary.files.length;
   out.push(
-    `${summary.resource} — ${summary.files.length} file${summary.files.length === 1 ? "" : "s"}, ` +
-      `${summary.tests.length} test${summary.tests.length === 1 ? "" : "s"}`
+    `${summary.resource} — ${fileCount} file${fileCount === 1 ? "" : "s"}, ` +
+      `${summary.total} test${summary.total === 1 ? "" : "s"}  [${summary.runtime}]`
   );
   out.push("");
 
@@ -112,7 +105,7 @@ export function renderText(summary: RunSummary): string {
 
   out.push("");
   const parts = [
-    `${summary.tests.length} test${summary.tests.length === 1 ? "" : "s"}`,
+    `${summary.total} test${summary.total === 1 ? "" : "s"}`,
     `${summary.passed} passed`,
     `${summary.failed} failed`,
     `${summary.durationMs}ms`,
