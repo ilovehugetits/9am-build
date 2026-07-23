@@ -47,6 +47,16 @@ local helpers = dofile((assetsDir or ".") .. "/helpers.lua")
 
 _G.TestHelpers = helpers
 
+-- Framework batteries (ox_lib / QBCore / QBox / ESX fakes) load before any
+-- resource or spec file, so load-time framework detection sees them.
+local batteries = dofile((assetsDir or ".") .. "/batteries/init.lua")
+batteries.load({
+  dir = (assetsDir or ".") .. "/batteries",
+  selection = os.getenv("NINEAM_TEST_BATTERIES"),
+  framework = os.getenv("NINEAM_TEST_FRAMEWORK"),
+  helpers = helpers,
+})
+
 --- Path relative to the resource root, so every reported location is a
 --- `path:line` anchor the reader can click, rather than an absolute path that
 --- differs on every machine.
