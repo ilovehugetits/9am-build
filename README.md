@@ -20,7 +20,8 @@ bun run release my-resource         # build + GitHub release only (no portal)
 
 ## Requirements
 
-- [Bun](https://bun.sh/) v1.0+
+- [Bun](https://bun.sh/) v1.0+ — runs the app (CLI, webhook server, portal API calls)
+- [Node.js](https://nodejs.org/) v20.11+ — runs the Playwright browser step (Bun cannot drive Playwright's pipe transport, so passkey login/registration runs under Node via a small subprocess). Must be on `PATH`, or set `NODE_BIN`.
 - Git
 - Playwright Chromium — after `bun install`, run `bunx playwright install chromium` once (the Docker image does this automatically)
 
