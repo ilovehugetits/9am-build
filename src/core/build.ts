@@ -7,7 +7,7 @@ import { glob } from "glob";
 import chalk from "chalk";
 import type { UploadConfig } from "./config.js";
 
-interface BuildResult {
+export interface BuildResult {
   escrowZip?: string;
   openZip?: string;
 }

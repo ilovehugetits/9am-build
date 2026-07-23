@@ -11,16 +11,19 @@ git push  -->  webhook  -->  build zip  -->  upload to portal  -->  GitHub relea
 ```bash
 git clone <repo-url> 9am-build && cd 9am-build
 bun install
-cp .env.example .env         # edit with your values
-bun run register-passkey      # one-time passkey setup
-bun run deploy my-resource    # build + upload
+bunx playwright install chromium   # one-time browser download
+cp .env.example .env               # edit with your values
+bun run register-passkey            # one-time passkey setup
+bun run deploy my-resource          # build + upload to portal
+bun run release my-resource         # build + GitHub release only (no portal)
 ```
 
 ## Requirements
 
-- [Bun](https://bun.sh/) v1.0+
+- [Bun](https://bun.sh/) v1.0+ — runs the app (CLI, webhook server, portal API calls)
+- [Node.js](https://nodejs.org/) v20.11+ — runs the Playwright browser step (Bun cannot drive Playwright's pipe transport, so passkey login/registration runs under Node via a small subprocess). Must be on `PATH`, or set `NODE_BIN`.
 - Git
-- Chromium (auto-downloaded by Puppeteer)
+- Playwright Chromium — after `bun install`, run `bunx playwright install chromium` once (the Docker image does this automatically)
 
 ## Setup
 
@@ -63,7 +66,7 @@ The Cfx.re Portal login is automated via a WebAuthn passkey. You register it onc
 1. Run `bun run register-passkey`
 2. A Chromium window opens — log into the Cfx.re Forum if prompted
 3. It navigates to your security preferences automatically
-4. Click **"Add passkey"** on the page, name it (e.g. `9am-build`), confirm
+4. Click **"Add Passkey"**, confirm access with your password when prompted, name it (e.g. `9am-build`), and confirm
 5. Go back to the terminal and press **Enter**
 6. Credentials are saved to `passkey-credential.json`
 
@@ -168,7 +171,8 @@ You can define one or both versions. Each gets its own zip and asset upload.
 | Command | Description |
 |---------|-------------|
 | `bun run build <name>` | Build zip(s) only — no upload |
-| `bun run deploy <name>` | Build + upload to Cfx.re Portal |
+| `bun run deploy <name>` | Build + upload to Cfx.re Portal + GitHub release |
+| `bun run release <name>` | Build + GitHub release only — never touches the portal or opens a browser |
 | `bun run server` | Start webhook server for automated deployments |
 | `bun run register-passkey` | One-time passkey registration |
 | `bun src/index.ts debug <name> <commit>` | Test changelog generation for a commit |
@@ -272,6 +276,7 @@ Automatically posts AI-generated changelogs to Discord after each deployment.
 | `OPENROUTER_MODEL` | No | OpenRouter model (default: `anthropic/claude-sonnet-4.6`) |
 | `DISCORD_CHANGELOG_WEBHOOK` | No | Discord webhook URL |
 | `GITHUB_TOKEN` | No | GitHub token for creating releases with build zips |
+| `CHROMIUM_NO_SANDBOX` | No | Set to `1` to disable the Chromium sandbox (needed only when running as root in a container; the Docker image sets it automatically). Leave unset locally. |
 
 *At least one API key required for changelog generation.
 
@@ -280,22 +285,38 @@ Automatically posts AI-generated changelogs to Discord after each deployment.
 ```
 9am-build/
 ├── src/
-│   ├── index.ts            # CLI entry point & command dispatch
-│   ├── config.ts           # Load & validate upload-config.json
-│   ├── deploy.ts           # Build + upload orchestrator
-│   ├── build.ts            # Zip creation & frontend builds
-│   ├── auth.ts             # Cfx.re Portal passkey authentication
-│   ├── upload.ts           # Puppeteer portal upload automation
-│   ├── git.ts              # Git clone / pull / diff
-│   ├── github.ts           # GitHub release creation & asset upload
-│   ├── server.ts           # GitHub webhook HTTP server
-│   ├── queue.ts            # Serial build queue (latest-wins)
-│   ├── changelog.ts        # AI changelog generation
-│   ├── discord.ts          # Discord webhook notifications
-│   ├── passkey.ts          # WebAuthn virtual authenticator
-│   └── register-passkey.ts # Passkey registration flow
-├── repos.json              # Managed repo list
-├── .env.example            # Environment template
+│   ├── index.ts               # CLI entry point & command router
+│   ├── cfx/                   # Cfx portal layer (browser only for login)
+│   │   ├── api.ts             # portal-api REST client + chunking/error helpers
+│   │   ├── upload.ts          # Chunked asset upload + version-cap recovery
+│   │   ├── requester.ts       # fetch-based Requester (Cookie header from session)
+│   │   ├── session.ts         # 3-tier ensureSession (jwt → SSO → passkey)
+│   │   ├── login.ts           # Passkey + SSO-only portal login flows
+│   │   ├── passkey.ts         # WebAuthn virtual authenticator + credential store
+│   │   ├── storage-state.ts   # Playwright storageState + legacy migration
+│   │   ├── run-browser.ts     # Spawns the Node browser runner from Bun
+│   │   └── browser-runner.ts  # Node entry for login/register (Playwright)
+│   ├── core/                  # Build & repo primitives
+│   │   ├── config.ts          # Load & validate upload-config.json
+│   │   ├── build.ts           # Zip creation & frontend builds
+│   │   ├── git.ts             # Git clone / pull / diff
+│   │   └── manifest.ts        # Read version from fxmanifest.lua
+│   ├── integrations/          # External services
+│   │   ├── github.ts          # GitHub release creation & asset upload
+│   │   ├── discord.ts         # Discord webhook notifications
+│   │   └── changelog.ts       # AI changelog generation
+│   ├── commands/              # One file per CLI command
+│   │   ├── build.ts           # Zip only
+│   │   ├── deploy.ts          # Build + portal upload + GitHub release
+│   │   ├── release.ts         # Build + GitHub release only (no portal)
+│   │   ├── register.ts        # Passkey registration (headed)
+│   │   ├── server.ts          # GitHub webhook HTTP server
+│   │   └── shared.ts          # Shared post-release Discord announcement
+│   └── server-support/
+│       ├── queue.ts           # Serial build queue (latest-wins)
+│       └── repos.ts           # repos.json loader
+├── repos.json                 # Managed repo list
+├── .env.example               # Environment template
 └── package.json
 ```
 

@@ -1,6 +1,6 @@
 import path from "path";
-import { readFile } from "fs/promises";
 import chalk from "chalk";
+import { readManifestVersion } from "../core/manifest.js";
 
 export interface GitHubReleaseOptions {
   repoDir: string;
@@ -35,16 +35,6 @@ function parseGitHubRepo(remoteUrl: string): GitHubRepoRef | null {
   const match = remoteUrl.match(/github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?$/);
   if (!match) return null;
   return { owner: match[1], repo: match[2] };
-}
-
-export async function readManifestVersion(repoDir: string): Promise<string | null> {
-  try {
-    const manifest = await readFile(path.join(repoDir, "fxmanifest.lua"), "utf-8");
-    const match = manifest.match(/^\s*version\s+['"]([^'"]+)['"]/m);
-    return match ? match[1] : null;
-  } catch {
-    return null;
-  }
 }
 
 async function githubRequest(

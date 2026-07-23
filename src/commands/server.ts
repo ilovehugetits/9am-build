@@ -1,22 +1,11 @@
 import { createHmac, timingSafeEqual } from "crypto";
-import { readFile } from "fs/promises";
-import path from "path";
 import chalk from "chalk";
-import { cloneOrPull, getGitDiff } from "./git.js";
-import { deployScript } from "./deploy.js";
-import { buildQueue } from "./queue.js";
-import { generateChangelog } from "./changelog.js";
-import { sendDiscordChangelog, classifyReleaseType } from "./discord.js";
-
-export interface RepoEntry {
-  name: string;
-  githubUrl: string;
-  branch?: string;
-}
-
-export interface ReposConfig {
-  repos: RepoEntry[];
-}
+import { cloneOrPull, getGitDiff } from "../core/git.js";
+import { deployCommand } from "./deploy.js";
+import { buildQueue } from "../server-support/queue.js";
+import { loadReposConfig, type RepoEntry } from "../server-support/repos.js";
+import { generateChangelog } from "../integrations/changelog.js";
+import { sendDiscordChangelog, classifyReleaseType } from "../integrations/discord.js";
 
 interface GitHubCommit {
   id: string;
@@ -40,19 +29,6 @@ interface GitHubPushPayload {
   };
 }
 
-const CONFIG_PATH = path.resolve(import.meta.dirname, "../repos.json");
-
-export async function loadReposConfig(): Promise<ReposConfig> {
-  const raw = await readFile(CONFIG_PATH, "utf-8");
-  const config: ReposConfig = JSON.parse(raw);
-
-  if (!config.repos || config.repos.length === 0) {
-    throw new Error("repos.json: 'repos' list cannot be empty.");
-  }
-
-  return config;
-}
-
 function getEnv(key: string): string {
   const value = process.env[key];
   if (!value) throw new Error(`.env: '${key}' is not defined.`);
@@ -61,9 +37,7 @@ function getEnv(key: string): string {
 
 function verifySignature(payload: string, signature: string, secret: string): boolean {
   const expected = "sha256=" + createHmac("sha256", secret).update(payload).digest("hex");
-
   if (expected.length !== signature.length) return false;
-
   return timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
 }
 
@@ -78,7 +52,6 @@ function findRepo(payload: GitHubPushPayload, repos: RepoEntry[]): RepoEntry | n
 async function handleWebhook(req: Request, repos: RepoEntry[], webhookSecret: string): Promise<Response> {
   const body = await req.text();
 
-  // Verify signature
   const signature = req.headers.get("x-hub-signature-256");
   if (!signature) {
     console.log(chalk.red("[Webhook] Missing signature header, rejected."));
@@ -90,14 +63,12 @@ async function handleWebhook(req: Request, repos: RepoEntry[], webhookSecret: st
     return new Response("Invalid signature", { status: 401 });
   }
 
-  // Only process push events
   const event = req.headers.get("x-github-event");
   if (event !== "push") {
     console.log(chalk.gray(`[Webhook] Event: ${event}, skipping.`));
     return new Response("Ignored event", { status: 200 });
   }
 
-  // Parse payload
   let payload: GitHubPushPayload;
   try {
     payload = JSON.parse(body);
@@ -105,14 +76,12 @@ async function handleWebhook(req: Request, repos: RepoEntry[], webhookSecret: st
     return new Response("Invalid JSON", { status: 400 });
   }
 
-  // Match repo
   const repo = findRepo(payload, repos);
   if (!repo) {
     console.log(chalk.yellow(`[Webhook] Unknown repo: ${payload.repository.full_name}`));
     return new Response("Unknown repository", { status: 200 });
   }
 
-  // Branch check
   const pushBranch = payload.ref.replace("refs/heads/", "");
   const targetBranch = repo.branch ?? "main";
   if (pushBranch !== targetBranch) {
@@ -122,17 +91,16 @@ async function handleWebhook(req: Request, repos: RepoEntry[], webhookSecret: st
     return new Response("Branch mismatch", { status: 200 });
   }
 
-  // Enqueue build
   console.log(chalk.blue(`[Webhook] ${repo.name}: Push received, queuing build...`));
 
   buildQueue.enqueue(repo.name, async () => {
     console.log(chalk.blue(`\n[Pipeline] ${repo.name}: Starting...`));
     const repoDir = await cloneOrPull(repo.name, repo.githubUrl, targetBranch);
-    const release = await deployScript(repoDir);
+    const { release } = await deployCommand(repoDir);
     console.log(chalk.bold.green(`[Pipeline] ${repo.name}: Completed.`));
 
     // Discord changelog (non-fatal) — only announce brand-new releases so the
-    // same version is never posted twice
+    // same version is never posted twice.
     try {
       if (release?.status !== "created") {
         console.log(
