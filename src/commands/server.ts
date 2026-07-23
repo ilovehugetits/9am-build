@@ -99,10 +99,10 @@ async function handleWebhook(req: Request, repos: RepoEntry[], webhookSecret: st
     const { release } = await deployCommand(repoDir);
     console.log(chalk.bold.green(`[Pipeline] ${repo.name}: Completed.`));
 
-    // Discord changelog (non-fatal) — only announce brand-new releases so the
-    // same version is never posted twice.
+    // Discord changelog (non-fatal) — announce new releases and same-version
+    // re-deploys; skip only when no GitHub release could be made at all.
     try {
-      if (release?.status !== "created") {
+      if (!release || release.status === "skipped") {
         console.log(
           chalk.gray(
             `[Discord] ${repo.name}: No new GitHub release (${release?.status ?? "failed"}), skipping notification.`

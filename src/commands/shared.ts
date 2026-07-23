@@ -4,14 +4,15 @@ import { generateChangelog } from "../integrations/changelog.js";
 import { sendDiscordChangelog, classifyReleaseType } from "../integrations/discord.js";
 import type { GitHubReleaseResult } from "../integrations/github.js";
 
-/** After a brand-new GitHub release, summarize commits since the previous tag
- *  and post a Discord changelog. No-op for existing/skipped releases. */
+/** After a GitHub release (brand-new or a re-deploy of an existing tag),
+ *  summarize commits since the previous tag and post a Discord changelog.
+ *  No-op only when no release could be made at all. */
 export async function announceRelease(
   repoDir: string,
   repoName: string,
   release: GitHubReleaseResult | null
 ): Promise<void> {
-  if (!release || release.status !== "created" || !release.tag) return;
+  if (!release || release.status === "skipped" || !release.tag) return;
 
   try {
     const prevTag = Bun.spawnSync(
