@@ -40,7 +40,11 @@ Content:
  * the model knows what it isn't seeing.
  */
 function prepareDiff(diff: string): string {
-  const NOISE_FILE = /(^|\/)(bun\.lock|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|.*\.(lock|min\.js|min\.css|map|png|jpg|jpeg|gif|webp|ico|ttf|woff2?))( |$)/;
+  // Vendored/generated trees that ship inside FiveM resource releases
+  // (web/node_modules, web/dist, web/build, streamed props).
+  const NOISE_DIR = /(^|\/)(node_modules|dist|build|vendor|stream|\.git)\//;
+  const NOISE_FILE =
+    /(^|\/)(bun\.lock|package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$|\.(lock|min\.js|min\.css|map|png|jpe?g|gif|webp|ico|svg|ttf|otf|eot|woff2?|mp3|ogg|wav|exe|dll|wasm|node|ydr|ydd|yft|ytd|ytyp|ymap|ymf|ycd|ybn|awc|rpf)$/i;
 
   const sections = diff.split(/^(?=diff --git )/m).filter(Boolean);
   const kept: string[] = [];
@@ -50,7 +54,7 @@ function prepareDiff(diff: string): string {
   for (const section of sections) {
     const fileName = section.match(/^diff --git a\/(\S+)/)?.[1] ?? "unknown";
 
-    if (NOISE_FILE.test(fileName) || section.includes("Binary files")) continue;
+    if (NOISE_DIR.test(fileName) || NOISE_FILE.test(fileName) || section.includes("Binary files")) continue;
 
     const chunk =
       section.length > MAX_DIFF_PER_FILE
