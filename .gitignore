@@ -36,3 +36,6 @@ Thumbs.db
 
 # Playwright MCP research artifacts
 .playwright-mcp/
+
+# npm pack artifacts
+*.tgz

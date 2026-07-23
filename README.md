@@ -6,6 +6,13 @@ Automated build & deploy pipeline for FiveM (Cfx.re) resources. Push to GitHub, 
 git push  -->  webhook  -->  build zip  -->  upload to portal  -->  GitHub release  -->  changelog to Discord
 ```
 
+Plus a CfxLua test runner you can use in any resource folder, with no clone and no setup:
+
+```bash
+cd path/to/your-resource
+npx 9am-build test        # or: bunx 9am-build test
+```
+
 ## Quick Start
 
 ```bash
@@ -170,6 +177,7 @@ You can define one or both versions. Each gets its own zip and asset upload.
 
 | Command | Description |
 |---------|-------------|
+| `npx 9am-build test` | Run `*.test.lua` in a resource folder — the only published command, needs no clone |
 | `bun run build <name>` | Build zip(s) only — no upload |
 | `bun run deploy <name>` | Build + upload to Cfx.re Portal + GitHub release |
 | `bun run release <name>` | Build + GitHub release only — never touches the portal or opens a browser |
@@ -285,17 +293,24 @@ Automatically posts AI-generated changelogs to Discord after each deployment.
 Run FiveM resource tests **without a live FXServer** — powered by the [CfxLua CLI](https://github.com/VIRUXE/cfxlua-cli) runtime (LuaGLM 5.4 + mocked natives, `Citizen`, events, exports).
 
 ```bash
-# From a resource directory
-bun run test:lua ./path/to/my-resource
+# From a resource directory — no clone, no setup
+npx 9am-build test          # or: bunx 9am-build test
+npx 9am-build test --json   # machine-readable results
+npx 9am-build test --strict # exit 1 when no specs exist
 
-# Or via the bin entry (npx / bunx)
+# From a clone of this repo
+bun run test:lua ./path/to/my-resource
 bunx 9am-build test my-resource          # repos.json name
-bunx 9am-build test ./path/to/resource   # local path
 ```
+
+The published CLI is compiled to plain ESM and runs on Node ≥ 20.11, so `npx`
+works on machines without Bun.
 
 ### Writing tests
 
-Place spec files under `tests/` (or configure patterns in `9am-test.json`):
+Spec files are discovered at `tests/**/*.spec.lua`, `test/**/*.spec.lua`, or any
+co-located `*.test.lua` next to the code it covers (`web/` and `node_modules/`
+are skipped). Override the patterns with `9am-test.json`:
 
 ```
 my-resource/
@@ -342,6 +357,44 @@ end)
 | `TestHelpers.spy(fn?)` | Callable spy with `.calls`, `:call_count()` |
 | `TestHelpers.mockGlobal(name, value)` | Temporarily replace a global |
 
+`require('server.pricing')` resolves against the resource root through a custom
+searcher that loads the module under a **resource-relative chunk name**, so
+tracebacks read `server/pricing.lua:4` rather than an absolute path that Lua
+truncates into uselessness.
+
+### Reading a failure
+
+Output is plain, greppable, and every location is a `path:line` anchor — no box
+drawing, no status glyphs, and no colour when stdout is not a TTY:
+
+```
+FAIL server/pricing.test.lua:12  withTax > blows up inside resource code
+
+  error      server/pricing.lua:4: attempt to perform arithmetic on a nil value (local 'price')
+
+  traceback
+    server/pricing.lua:4: in function 'server.pricing.withTax'
+    server/pricing.test.lua:13: in field 'fn'
+
+  source server/pricing.lua:4
+      3 | function M.withTax(price, rate)
+    > 4 |   return price + (price * rate)
+      5 | end
+
+24 tests  22 passed  2 failed  26ms
+```
+
+A failed matcher reports `matcher` / `expected` / `actual` as separate lines
+instead of a prose sentence. CfxLua's own `bootstrap.lua` and `scheduler.lua`
+frames are stripped, since they sit beneath every test and say nothing about the
+resource under test. `--json` emits the same data as one document.
+
+Exit code is 0 when everything passes, 1 on any failure. "No specs found" exits
+0 unless you pass `--strict`.
+
+> Add `**/*.test.lua` and `tests/**` to `exclude` in your `upload-config.json`
+> so specs never ship inside the escrow or open zip.
+
 ### Configuration (`9am-test.json`)
 
 ```json
@@ -376,7 +429,8 @@ and can be forced with `NINEAM_CFXLUA_E2E=1 bun test`.
 ```
 9am-build/
 ├── src/
-│   ├── index.ts               # CLI entry point & command router
+│   ├── cli.ts                 # Published npm entry — `9am-build test` only
+│   ├── index.ts               # Repo-only CLI entry point & command router
 │   ├── cfx/                   # Cfx portal layer (browser only for login)
 │   │   ├── api.ts             # portal-api REST client + chunking/error helpers
 │   │   ├── upload.ts          # Chunked asset upload + version-cap recovery
@@ -397,6 +451,7 @@ and can be forced with `NINEAM_CFXLUA_E2E=1 bun test`.
 │   │   ├── discord.ts         # Discord webhook notifications
 │   │   └── changelog.ts       # AI changelog generation
 │   ├── commands/              # One file per CLI command
+│   │   ├── test.ts            # Run *.test.lua (published)
 │   │   ├── build.ts           # Zip only
 │   │   ├── deploy.ts          # Build + portal upload + GitHub release
 │   │   ├── release.ts         # Build + GitHub release only (no portal)
@@ -404,17 +459,20 @@ and can be forced with `NINEAM_CFXLUA_E2E=1 bun test`.
 │   │   ├── server.ts          # GitHub webhook HTTP server
 │   │   ├── test.ts            # CfxLua unit test runner
 │   │   └── shared.ts          # Shared post-release Discord announcement
-│   ├── cfxlua/                # Offline FiveM Lua test runner
+│   ├── cfxlua/                # Offline FiveM Lua test runner (published)
 │   │   ├── discover.ts        # Find *.spec.lua / *.test.lua files
 │   │   ├── ensure-toolchain.ts # Download/cache CfxLua VM (+ WSL fallback)
-│   │   ├── run.ts             # Orchestrate test execution
-│   │   └── test/              # Lua test framework (describe/it/expect)
+│   │   ├── run.ts             # Orchestrate execution, parse the JSON payload
+│   │   ├── report.ts          # Agent-first text and --json rendering
+│   │   ├── spawn.ts           # node:child_process wrapper (Node-compatible)
+│   │   ├── types.ts           # Result shapes
+│   │   └── test/              # Lua side: framework, helpers, runner
 │   └── server-support/
 │       ├── queue.ts           # Serial build queue (latest-wins)
 │       └── repos.ts           # repos.json loader
 ├── repos.json                 # Managed repo list
 ├── fixtures/                  # Sample resource for CfxLua test demos
-├── bin/9am-build.js           # CLI bin entry (bunx / npx)
+├── scripts/copy-lua.mjs       # Copy Lua assets into dist on build
 ├── .env.example               # Environment template
 └── package.json
 ```

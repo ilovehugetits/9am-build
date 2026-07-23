@@ -93,11 +93,15 @@ async function main() {
       const resourcePath = process.argv[3];
       if (!resourcePath) usage();
       const verbose = !process.argv.includes("--quiet");
+      const json = process.argv.includes("--json");
+      const strict = process.argv.includes("--strict");
       if (resourcePath.startsWith(".") || resourcePath.includes("/") || resourcePath.includes("\\")) {
-        return testCommand(resourcePath, { verbose });
+        process.exitCode = await testCommand({ dir: resourcePath, verbose, json, strict });
+        return;
       }
       const { dir } = await resolveScriptDir(resourcePath);
-      return testCommand(dir, { verbose });
+      process.exitCode = await testCommand({ dir, verbose, json, strict });
+      return;
     }
     case "release": {
       const scriptName = process.argv[3];

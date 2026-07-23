@@ -1,26 +1,58 @@
 import path from "path";
 import chalk from "chalk";
 import { runResourceTests } from "../cfxlua/run.js";
+import { renderJson, renderText } from "../cfxlua/report.js";
 
-export async function testCommand(resourcePath: string, options?: { verbose?: boolean }): Promise<void> {
-  const resolved = path.resolve(resourcePath);
-  console.log(chalk.bold(`\n9am-build — CfxLua Tests\n`));
-  console.log(chalk.gray(`Resource: ${resolved}\n`));
+export interface TestOptions {
+  dir: string;
+  json?: boolean;
+  strict?: boolean;
+  verbose?: boolean;
+}
 
-  const result = await runResourceTests({
-    resourceDir: resolved,
-    verbose: options?.verbose ?? true,
-  });
+export async function testCommand(options: TestOptions): Promise<number> {
+  const resolved = path.resolve(options.dir);
 
-  process.stdout.write(result.output);
+  let result;
+  try {
+    result = await runResourceTests({
+      resourceDir: resolved,
+      verbose: options.verbose ?? !options.json,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
 
-  if (!result.output.endsWith("\n")) console.log("");
+    // "No tests found" is a soft outcome unless --strict: a resource that has
+    // not adopted testing yet should not fail someone's pipeline.
+    if (message.startsWith("No CfxLua tests found")) {
+      if (options.json) {
+        console.log(
+          JSON.stringify(
+            {
+              resource: path.basename(resolved),
+              root: resolved,
+              files: [],
+              tests: [],
+              passed: 0,
+              failed: 0,
+              total: 0,
+              durationMs: 0,
+              runtime: "none",
+            },
+            null,
+            2
+          )
+        );
+      } else {
+        console.log(chalk.yellow(message));
+      }
+      return options.strict ? 1 : 0;
+    }
 
-  if (result.exitCode === 0) {
-    console.log(chalk.bold.green(`\n${result.passed}/${result.total} passed\n`));
-    return;
+    console.error(chalk.red(message));
+    return 1;
   }
 
-  console.log(chalk.bold.red(`\n${result.failed}/${result.total} failed (${result.passed} passed)\n`));
-  process.exit(1);
+  console.log(options.json ? renderJson(result.summary) : renderText(result.summary));
+  return result.exitCode;
 }

@@ -1,6 +1,7 @@
 import path from "path";
-import { mkdir } from "fs/promises";
+import { mkdir, writeFile } from "fs/promises";
 import { existsSync } from "fs";
+import { runProcess } from "./spawn.js";
 
 const CFXLUA_VERSION = "v1.1.0";
 
@@ -27,9 +28,12 @@ function downloadUrl(key: "windows" | "linux"): string {
 
 async function wslAvailable(): Promise<boolean> {
   if (process.platform !== "win32") return false;
-  const proc = Bun.spawn(["wsl", "--status"], { stdout: "pipe", stderr: "pipe" });
-  const code = await proc.exited;
-  return code === 0;
+  try {
+    const { exitCode } = await runProcess("wsl", ["--status"]);
+    return exitCode === 0;
+  } catch {
+    return false;
+  }
 }
 
 export function toWslPath(winPath: string): string {
@@ -43,38 +47,22 @@ export function toWslPath(winPath: string): string {
 async function extractArchive(archivePath: string, destDir: string): Promise<void> {
   if (archivePath.endsWith(".zip")) {
     if (process.platform === "win32") {
-      const proc = Bun.spawn(
-        [
-          "powershell",
-          "-NoProfile",
-          "-Command",
-          `Expand-Archive -Force -Path '${archivePath}' -DestinationPath '${destDir}'`,
-        ],
-        { stdout: "pipe", stderr: "pipe" }
-      );
-      const code = await proc.exited;
-      if (code !== 0) {
-        const err = await new Response(proc.stderr).text();
-        throw new Error(`Failed to extract CfxLua archive: ${err}`);
-      }
+      const { exitCode, stderr } = await runProcess("powershell", [
+        "-NoProfile",
+        "-Command",
+        `Expand-Archive -Force -Path '${archivePath}' -DestinationPath '${destDir}'`,
+      ]);
+      if (exitCode !== 0) throw new Error(`Failed to extract CfxLua archive: ${stderr}`);
       return;
     }
-    const proc = Bun.spawn(["unzip", "-o", archivePath, "-d", destDir], { stdout: "pipe", stderr: "pipe" });
-    const code = await proc.exited;
-    if (code !== 0) {
-      const err = await new Response(proc.stderr).text();
-      throw new Error(`Failed to extract CfxLua archive: ${err}`);
-    }
+    const { exitCode, stderr } = await runProcess("unzip", ["-o", archivePath, "-d", destDir]);
+    if (exitCode !== 0) throw new Error(`Failed to extract CfxLua archive: ${stderr}`);
     return;
   }
 
   await mkdir(destDir, { recursive: true });
-  const proc = Bun.spawn(["tar", "-xzf", archivePath, "-C", destDir], { stdout: "pipe", stderr: "pipe" });
-  const code = await proc.exited;
-  if (code !== 0) {
-    const err = await new Response(proc.stderr).text();
-    throw new Error(`Failed to extract CfxLua archive: ${err}`);
-  }
+  const { exitCode, stderr } = await runProcess("tar", ["-xzf", archivePath, "-C", destDir]);
+  if (exitCode !== 0) throw new Error(`Failed to extract CfxLua archive: ${stderr}`);
 }
 
 async function downloadToolchain(destDir: string, key: "windows" | "linux"): Promise<void> {
@@ -88,27 +76,28 @@ async function downloadToolchain(destDir: string, key: "windows" | "linux"): Pro
   if (!res.ok) {
     throw new Error(`Failed to download CfxLua toolchain (${res.status}): ${url}`);
   }
-  await Bun.write(archivePath, res);
+  await writeFile(archivePath, Buffer.from(await res.arrayBuffer()));
   await extractArchive(archivePath, destDir);
 }
 
 async function probeNativeVm(vm: string, runtimeDir: string): Promise<boolean> {
   const bootstrap = path.join(runtimeDir, "bootstrap.lua");
   const probeScript = path.join(runtimeDir, ".9am-probe.lua");
-  await Bun.write(probeScript, 'print("9AM_CFXLUA_PROBE_OK")\n');
+  await writeFile(probeScript, 'print("9AM_CFXLUA_PROBE_OK")\n', "utf8");
 
-  const proc = Bun.spawn([vm, bootstrap, probeScript], {
-    cwd: path.dirname(vm),
-    env: {
-      ...process.env,
-      PATH: `${path.dirname(vm)}${path.delimiter}${process.env.PATH ?? ""}`,
-      CFXLUA_TIMEOUT: "3000",
-    },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [stdout, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
-  return code === 0 && stdout.includes("9AM_CFXLUA_PROBE_OK");
+  try {
+    const { exitCode, stdout } = await runProcess(vm, [bootstrap, probeScript], {
+      cwd: path.dirname(vm),
+      env: {
+        ...process.env,
+        PATH: `${path.dirname(vm)}${path.delimiter}${process.env.PATH ?? ""}`,
+        CFXLUA_TIMEOUT: "3000",
+      },
+    });
+    return exitCode === 0 && stdout.includes("9AM_CFXLUA_PROBE_OK");
+  } catch {
+    return false;
+  }
 }
 
 function resolveFromEnv(): CfxLuaToolchain | null {
@@ -157,7 +146,7 @@ export async function ensureCfxLuaToolchain(): Promise<CfxLuaToolchain> {
 
     if (await wslAvailable()) {
       const linux = await ensurePlatformToolchain("linux");
-      console.log(chalkFallbackNotice());
+      console.log("Native CfxLua VM unavailable — using Linux binary via WSL.");
       return { ...linux, viaWsl: true };
     }
 
@@ -170,14 +159,16 @@ export async function ensureCfxLuaToolchain(): Promise<CfxLuaToolchain> {
   throw new Error(`Unsupported platform: ${process.platform}`);
 }
 
-function chalkFallbackNotice(): string {
-  return "Native CfxLua VM unavailable — using Linux binary via WSL.";
-}
-
 export function packageRoot(): string {
-  return path.resolve(import.meta.dir, "..", "..");
+  return path.resolve(import.meta.dirname, "..", "..");
 }
 
+/**
+ * Lua assets sit next to this module, so this resolves correctly whether it is
+ * running from `src/cfxlua/` under Bun or from the compiled `dist/cfxlua/`
+ * under Node. A package-root-relative "src/cfxlua/test" would break once
+ * compiled.
+ */
 export function testAssetsDir(): string {
-  return path.join(packageRoot(), "src", "cfxlua", "test");
+  return path.join(import.meta.dirname, "test");
 }

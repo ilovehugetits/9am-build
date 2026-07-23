@@ -6,12 +6,35 @@ if not resourceDir then
   os.exit(1)
 end
 
-resourceDir = resourceDir:gsub("\\", "/")
+resourceDir = resourceDir:gsub("\\", "/"):gsub("/+$", "")
 
 -- Extend package.path so tests can require resource modules.
 package.path = resourceDir .. "/?.lua;"
   .. resourceDir .. "/?/init.lua;"
   .. package.path
+
+--- Resolve `require('server.main')` ourselves so the module is loaded under a
+--- resource-relative chunk name. The stock path searcher uses the absolute
+--- path, which Lua then truncates in tracebacks ("...ce/server\main.lua:8"),
+--- destroying the path:line anchor and the source excerpt.
+local function resourceSearcher(name)
+  local relative = name:gsub("%.", "/")
+  for _, candidate in ipairs({ relative .. ".lua", relative .. "/init.lua" }) do
+    local full = resourceDir .. "/" .. candidate
+    local handle = io.open(full, "r")
+    if handle then
+      local source = handle:read("*a")
+      handle:close()
+      local chunk, err = load(source, "@" .. candidate)
+      if not chunk then error(err, 0) end
+      return chunk, candidate
+    end
+  end
+  return "\n\tno resource module '" .. name .. "' under " .. resourceDir
+end
+
+-- Position 2: ahead of the stock Lua path searcher, behind package.preload.
+table.insert(package.searchers or package.loaders, 2, resourceSearcher)
 
 local assetsDir = os.getenv("NINEAM_TEST_ASSETS")
 if assetsDir then
@@ -22,34 +45,76 @@ end
 local framework = dofile((assetsDir or ".") .. "/framework.lua")
 local helpers = dofile((assetsDir or ".") .. "/helpers.lua")
 
-_G.describe = describe
-_G.it = it
-_G.beforeEach = beforeEach
-_G.afterEach = afterEach
-_G.expect = expect
 _G.TestHelpers = helpers
+
+--- Path relative to the resource root, so every reported location is a
+--- `path:line` anchor the reader can click, rather than an absolute path that
+--- differs on every machine.
+local function relativeTo(root, file)
+  local normalized = file:gsub("\\", "/")
+  local prefix = root .. "/"
+  if normalized:sub(1, #prefix) == prefix then
+    return normalized:sub(#prefix + 1)
+  end
+  return normalized
+end
+
+local loadFailures = {}
 
 for i = 2, #arg do
   local testFile = arg[i]
-  print("[9am-build] loading " .. testFile)
-  local ok, err = xpcall(function()
-    dofile(testFile)
-  end, debug.traceback)
-  if not ok then
-    io.stderr:write("[9am-build] failed to load " .. testFile .. ":\n" .. tostring(err) .. "\n")
-    print("9AM_TEST_SUMMARY passed=0 failed=1 total=1")
-    os.exit(1)
+  local relative = relativeTo(resourceDir, testFile)
+
+  local handle, openErr = io.open(testFile, "r")
+  if not handle then
+    loadFailures[#loadFailures + 1] = { file = relative, message = tostring(openErr) }
+  else
+    local source = handle:read("*a")
+    handle:close()
+
+    -- The "@" prefix makes Lua treat the name as a file path, so it appears
+    -- verbatim in debug.getinfo and in every traceback frame.
+    local chunk, compileErr = load(source, "@" .. relative)
+    if not chunk then
+      loadFailures[#loadFailures + 1] = { file = relative, message = tostring(compileErr) }
+    else
+      local ok, runErr = xpcall(chunk, debug.traceback)
+      if not ok then
+        loadFailures[#loadFailures + 1] = { file = relative, message = tostring(runErr) }
+      end
+    end
   end
 end
-
-print("")
-print("[9am-build] running tests...")
-print("")
 
 local results = framework.run()
 local total = results.passed + results.failed
 
-print("")
+-- A file that fails to load registers no tests, so it would otherwise vanish
+-- from the report entirely. Surface each as a failing entry.
+for _, failure in ipairs(loadFailures) do
+  results.tests[#results.tests + 1] = {
+    suite = failure.file,
+    test = "<file failed to load>",
+    name = failure.file .. " > <file failed to load>",
+    file = failure.file,
+    line = 0,
+    status = "error",
+    durationMs = 0,
+    message = failure.message,
+  }
+  results.failed = results.failed + 1
+  total = total + 1
+end
+
+print("9AM_TEST_JSON_BEGIN")
+print(framework.encodeJson({
+  passed = results.passed,
+  failed = results.failed,
+  total = total,
+  tests = results.tests,
+}))
+print("9AM_TEST_JSON_END")
+
 print(string.format(
   "9AM_TEST_SUMMARY passed=%d failed=%d total=%d",
   results.passed,

@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "dist",
+    "rootDir": "src",
+    "noEmit": false
+  },
+  "//": "include must be cleared: it is inherited from the base config and would otherwise pull in the whole src tree, shipping playwright-importing modules and bun:test files to consumers.",
+  "include": [],
+  "files": ["src/cli.ts"]
+}
