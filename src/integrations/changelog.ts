@@ -47,8 +47,9 @@ async function generateViaAnthropic(input: ChangelogInput, truncatedDiff: string
   const anthropic = new Anthropic({ apiKey });
 
   const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 300,
+    model: "claude-sonnet-5",
+    max_tokens: 1000,
+    output_config: { effort: "medium" },
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: buildUserMessage(input, truncatedDiff) }],
   });
@@ -69,7 +70,7 @@ async function generateViaAnthropic(input: ChangelogInput, truncatedDiff: string
 
 async function generateViaOpenRouter(input: ChangelogInput, truncatedDiff: string): Promise<string> {
   const apiKey = process.env.OPENROUTER_API_KEY!;
-  const model = process.env.OPENROUTER_MODEL ?? "anthropic/claude-sonnet-4.6";
+  const model = process.env.OPENROUTER_MODEL ?? "anthropic/claude-sonnet-5";
 
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
@@ -79,7 +80,8 @@ async function generateViaOpenRouter(input: ChangelogInput, truncatedDiff: strin
     },
     body: JSON.stringify({
       model,
-      max_tokens: 300,
+      max_tokens: 1000,
+      reasoning: { effort: "medium" },
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: buildUserMessage(input, truncatedDiff) },
