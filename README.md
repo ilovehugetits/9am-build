@@ -280,6 +280,97 @@ Automatically posts AI-generated changelogs to Discord after each deployment.
 
 *At least one API key required for changelog generation.
 
+## CfxLua Unit Tests
+
+Run FiveM resource tests **without a live FXServer** — powered by the [CfxLua CLI](https://github.com/VIRUXE/cfxlua-cli) runtime (LuaGLM 5.4 + mocked natives, `Citizen`, events, exports).
+
+```bash
+# From a resource directory
+bun run test:lua ./path/to/my-resource
+
+# Or via the bin entry (npx / bunx)
+bunx 9am-build test my-resource          # repos.json name
+bunx 9am-build test ./path/to/resource   # local path
+```
+
+### Writing tests
+
+Place spec files under `tests/` (or configure patterns in `9am-test.json`):
+
+```
+my-resource/
+├── fxmanifest.lua
+├── server/
+│   └── main.lua
+├── tests/
+│   └── pricing.spec.lua
+└── 9am-test.json          # optional
+```
+
+Example spec (`tests/pricing.spec.lua`):
+
+```lua
+local pricing = require('server.main')
+
+describe('pricing.withTax', function()
+  it('adds tax to the base price', function()
+    expect(pricing.withTax(100, 0.2)).to.equal(120)
+  end)
+end)
+
+describe('events', function()
+  it('can spy on TriggerEvent', function()
+    local spy = TestHelpers.spy()
+    local restore = TestHelpers.mockGlobal('TriggerEvent', spy)
+    TriggerEvent('shop:open', 1)
+    restore()
+    expect(spy:call_count()).to.equal(1)
+  end)
+end)
+```
+
+### Test API
+
+| Global | Description |
+|--------|-------------|
+| `describe(name, fn)` | Group tests |
+| `it(name, fn)` | Define a test case |
+| `beforeEach(fn)` / `afterEach(fn)` | Per-test hooks |
+| `expect(value).to.equal(x)` | Equality assert |
+| `expect(value).to.deep_equal(x)` | Deep table compare |
+| `expect(fn).to.throw('msg')` | Error assert |
+| `TestHelpers.spy(fn?)` | Callable spy with `.calls`, `:call_count()` |
+| `TestHelpers.mockGlobal(name, value)` | Temporarily replace a global |
+
+### Configuration (`9am-test.json`)
+
+```json
+{
+  "patterns": ["tests/**/*.spec.lua", "tests/**/*.test.lua"],
+  "include": ["tests/manual.spec.lua"],
+  "exclude": ["**/node_modules/**"]
+}
+```
+
+### Toolchain
+
+On first run, 9am-build downloads CfxLua v1.1.0 to `~/.9am-build/cfxlua/`. Override with:
+
+| Variable | Description |
+|----------|-------------|
+| `CFXLUA_VM` | Path to `cfxlua-vm` binary |
+| `CFXLUA_RUNTIME` | Path to cfxlua `runtime/` directory |
+| `CFXLUA_TIMEOUT` | Script timeout in ms (default: `30000`) |
+| `NINEAM_CFXLUA_CACHE` | Custom cache directory |
+
+On Windows, if the native VM fails to start, 9am-build automatically falls back to the Linux binary via **WSL**.
+
+### Testing the runner itself
+
+`bun test` covers discovery, config parsing and WSL path translation. The end-to-end
+tests spawn the real CfxLua VM; they run automatically once the toolchain is cached
+and can be forced with `NINEAM_CFXLUA_E2E=1 bun test`.
+
 ## Project Structure
 
 ```
@@ -311,11 +402,19 @@ Automatically posts AI-generated changelogs to Discord after each deployment.
 │   │   ├── release.ts         # Build + GitHub release only (no portal)
 │   │   ├── register.ts        # Passkey registration (headed)
 │   │   ├── server.ts          # GitHub webhook HTTP server
+│   │   ├── test.ts            # CfxLua unit test runner
 │   │   └── shared.ts          # Shared post-release Discord announcement
+│   ├── cfxlua/                # Offline FiveM Lua test runner
+│   │   ├── discover.ts        # Find *.spec.lua / *.test.lua files
+│   │   ├── ensure-toolchain.ts # Download/cache CfxLua VM (+ WSL fallback)
+│   │   ├── run.ts             # Orchestrate test execution
+│   │   └── test/              # Lua test framework (describe/it/expect)
 │   └── server-support/
 │       ├── queue.ts           # Serial build queue (latest-wins)
 │       └── repos.ts           # repos.json loader
 ├── repos.json                 # Managed repo list
+├── fixtures/                  # Sample resource for CfxLua test demos
+├── bin/9am-build.js           # CLI bin entry (bunx / npx)
 ├── .env.example               # Environment template
 └── package.json
 ```

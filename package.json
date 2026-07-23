@@ -3,12 +3,21 @@
   "version": "1.0.0",
   "description": "FiveM Cfx Portal auto-upload tool",
   "type": "module",
+  "bin": {
+    "9am-build": "./bin/9am-build.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "fixtures/"
+  ],
   "scripts": {
     "deploy": "bun src/index.ts deploy",
     "build": "bun src/index.ts build",
     "release": "bun src/index.ts release",
     "server": "bun src/index.ts server",
     "register-passkey": "bun src/index.ts register",
+    "test:lua": "bun src/index.ts test",
     "debug": "bun src/index.ts debug",
     "test": "bun test",
     "typecheck": "tsc --noEmit"

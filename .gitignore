@@ -28,6 +28,9 @@ Thumbs.db
 # Bun
 *.lockb
 
+# CfxLua toolchain cache (downloaded on first test run)
+.9am-build/
+
 # Claude Code
 .claude/
 
