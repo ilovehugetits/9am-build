@@ -3,7 +3,7 @@ import { mkdtemp, writeFile, rm, readFile } from "fs/promises";
 import { tmpdir } from "os";
 import chalk from "chalk";
 import { ensureCfxLuaToolchain, testAssetsDir, toWslPath, type CfxLuaToolchain } from "./ensure-toolchain.js";
-import { assertResourceDir, discoverTestFiles, loadTestConfig } from "./discover.js";
+import { assertResourceDir, discoverTestFiles, loadTestConfig, resolveBatteryEnv } from "./discover.js";
 import { runProcess } from "./spawn.js";
 import type { RunSummary, TestResult } from "./types.js";
 
@@ -124,9 +124,12 @@ export async function runResourceTests(options: RunTestsOptions): Promise<RunTes
   try {
     await writeFile(runnerPath, runnerSource, "utf8");
 
+    const battery = resolveBatteryEnv(config);
     const env: Record<string, string> = {
       CFXLUA_TIMEOUT: String(options.timeoutMs ?? 30_000),
       CFXLUA_RESOURCE_NAME: path.basename(resourceDir),
+      NINEAM_TEST_FRAMEWORK: battery.framework,
+      NINEAM_TEST_BATTERIES: battery.batteries,
       NINEAM_TEST_ASSETS: toolchain.viaWsl ? toWslPath(assets) : toPosix(assets),
       __cfx_bootstrapPath: toolchain.viaWsl
         ? toWslPath(toolchain.runtimeDir)

@@ -3,7 +3,7 @@ import path from "path";
 import os from "os";
 import { existsSync } from "fs";
 import { mkdtemp, mkdir, writeFile, rm } from "fs/promises";
-import { assertResourceDir, discoverTestFiles, loadTestConfig } from "./discover.js";
+import { assertResourceDir, discoverTestFiles, loadTestConfig, resolveBatteryEnv } from "./discover.js";
 import { toWslPath, testAssetsDir, packageRoot } from "./ensure-toolchain.js";
 import { runResourceTests } from "./run.js";
 
@@ -76,7 +76,7 @@ describe("test discovery", () => {
   test("finds every spec file in the sample fixture", async () => {
     const files = await discoverTestFiles(fixturesDir);
     const names = files.map((f) => path.basename(f)).sort();
-    expect(names).toEqual(["framework.spec.lua", "pricing.spec.lua"]);
+    expect(names).toEqual(["batteries.spec.lua", "framework.spec.lua", "pricing.spec.lua"]);
   });
 
   test("reads 9am-test.json when present", async () => {
@@ -122,11 +122,43 @@ describe("test discovery", () => {
   });
 });
 
+describe("battery configuration", () => {
+  test("defaults to all batteries with the runner-side default framework", () => {
+    expect(resolveBatteryEnv(null)).toEqual({ framework: "", batteries: "all" });
+    expect(resolveBatteryEnv({ batteries: true })).toEqual({ framework: "", batteries: "all" });
+  });
+
+  test("batteries:false disables the layer entirely", () => {
+    expect(resolveBatteryEnv({ batteries: false }).batteries).toBe("none");
+    expect(resolveBatteryEnv({ batteries: [] }).batteries).toBe("none");
+  });
+
+  test("a battery list serializes to csv and the framework passes through", () => {
+    expect(resolveBatteryEnv({ batteries: ["oxlib", "esx"], framework: "esx" })).toEqual({
+      framework: "esx",
+      batteries: "oxlib,esx",
+    });
+  });
+
+  test("rejects unknown framework and battery names before spawning a VM", () => {
+    expect(() => resolveBatteryEnv({ framework: "vrp" as never })).toThrow(/Invalid "framework"/);
+    expect(() => resolveBatteryEnv({ batteries: ["oxlib", "vorp"] })).toThrow(
+      /Invalid battery name/
+    );
+  });
+});
+
 describe("packaging paths", () => {
   test("test assets ship alongside the source", () => {
     expect(existsSync(path.join(testAssetsDir(), "framework.lua"))).toBe(true);
     expect(existsSync(path.join(testAssetsDir(), "helpers.lua"))).toBe(true);
     expect(existsSync(path.join(testAssetsDir(), "runner.lua"))).toBe(true);
+  });
+
+  test("battery assets ship alongside the source", () => {
+    for (const name of ["init", "state", "oxlib", "qbcore", "qbox", "esx"]) {
+      expect(existsSync(path.join(testAssetsDir(), "batteries", `${name}.lua`))).toBe(true);
+    }
   });
 
   test("package root resolves to the directory holding package.json", () => {
@@ -227,6 +259,60 @@ end)
         const result = await runResourceTests({ resourceDir: dir, verbose: false });
         expect(result.exitCode).toBe(1);
         expect(result.failed).toBeGreaterThan(0);
+      } finally {
+        await cleanup();
+      }
+    },
+    E2E_TIMEOUT
+  );
+
+  e2e(
+    "honours a configured initial framework",
+    async () => {
+      const { dir, cleanup } = await makeResource({
+        "9am-test.json": JSON.stringify({ framework: "esx" }),
+        "tests/framework-config.spec.lua": `
+describe('configured framework', function()
+  it('starts with es_extended active', function()
+    expect(TestHelpers.framework.active()).to.equal('esx')
+    expect(GetResourceState('es_extended')).to.equal('started')
+    expect(GetResourceState('qbx_core')).to.equal('missing')
+  end)
+end)
+`,
+      });
+      try {
+        const result = await runResourceTests({ resourceDir: dir, verbose: false });
+        expect(result.failed).toBe(0);
+        expect(result.passed).toBe(1);
+      } finally {
+        await cleanup();
+      }
+    },
+    E2E_TIMEOUT
+  );
+
+  e2e(
+    "leaves the runtime bare when batteries are disabled",
+    async () => {
+      const { dir, cleanup } = await makeResource({
+        "9am-test.json": JSON.stringify({ batteries: false }),
+        "tests/no-batteries.spec.lua": `
+describe('batteries disabled', function()
+  it('defines no battery globals and no control API', function()
+    -- rawget dodges the runtime's magic-mock metatable on _G
+    expect(rawget(_G, 'lib')).to.be_nil()
+    expect(rawget(_G, 'QBCore')).to.be_nil()
+    expect(rawget(_G, 'ESX')).to.be_nil()
+    expect(TestHelpers.framework).to.be_nil()
+  end)
+end)
+`,
+      });
+      try {
+        const result = await runResourceTests({ resourceDir: dir, verbose: false });
+        expect(result.failed).toBe(0);
+        expect(result.passed).toBe(1);
       } finally {
         await cleanup();
       }

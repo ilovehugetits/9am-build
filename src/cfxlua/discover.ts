@@ -22,7 +22,52 @@ export type TestConfig = {
   patterns?: string[];
   include?: string[];
   exclude?: string[];
+  /** Initial active framework battery. Default: "qbox". */
+  framework?: "qbox" | "qbcore" | "esx" | "none";
+  /** Battery selection: true/absent = all, false = none, or a list of names. */
+  batteries?: boolean | string[];
 };
+
+const FRAMEWORK_NAMES = new Set(["qbox", "qbcore", "esx", "none"]);
+const BATTERY_NAMES = new Set(["oxlib", "qbcore", "qbox", "esx"]);
+
+/**
+ * Translates the 9am-test.json battery fields into the two environment
+ * variables the Lua runner reads. Invalid names fail here, before a VM is
+ * spawned, with the valid set in the message.
+ */
+export function resolveBatteryEnv(config?: TestConfig | null): {
+  framework: string;
+  batteries: string;
+} {
+  const framework = config?.framework ?? "";
+  if (framework && !FRAMEWORK_NAMES.has(framework)) {
+    throw new Error(
+      `Invalid "framework" in 9am-test.json: ${JSON.stringify(framework)}. ` +
+        `Expected one of: qbox, qbcore, esx, none.`
+    );
+  }
+
+  const batteries = config?.batteries;
+  let selection: string;
+  if (batteries === undefined || batteries === true) {
+    selection = "all";
+  } else if (batteries === false) {
+    selection = "none";
+  } else {
+    for (const name of batteries) {
+      if (!BATTERY_NAMES.has(name)) {
+        throw new Error(
+          `Invalid battery name in 9am-test.json: ${JSON.stringify(name)}. ` +
+            `Expected any of: oxlib, qbcore, qbox, esx.`
+        );
+      }
+    }
+    selection = batteries.length > 0 ? batteries.join(",") : "none";
+  }
+
+  return { framework, batteries: selection };
+}
 
 export async function loadTestConfig(resourceDir: string): Promise<TestConfig | null> {
   const configPath = path.join(resourceDir, "9am-test.json");

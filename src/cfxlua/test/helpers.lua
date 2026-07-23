@@ -56,6 +56,14 @@ function M.spy(fn)
   return spy
 end
 
+--- Re-require a resource module so its load-time side effects (framework
+--- detection, event registration) run again — e.g. after
+--- TestHelpers.framework.use() switched the active framework.
+function M.reload(name)
+  package.loaded[name] = nil
+  return require(name)
+end
+
 function M.mockGlobal(name, value)
   local previous = _G[name]
   _G[name] = value

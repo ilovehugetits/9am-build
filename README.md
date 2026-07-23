@@ -362,6 +362,54 @@ searcher that loads the module under a **resource-relative chunk name**, so
 tracebacks read `server/pricing.lua:4` rather than an absolute path that Lua
 truncates into uselessness.
 
+### Framework batteries (ox_lib / QBCore / QBox / ESX)
+
+Working fakes for the framework layer load before any resource or spec file,
+so a resource written against ox_lib, QBCore, QBox (`qbx_core`) or ESX
+(`es_extended`) loads with zero configuration: `lib.*`, `QBCore` /
+`exports['qb-core']:GetCoreObject()`, `exports.qbx_core`, and
+`exports['es_extended']:getSharedObject()` all exist and are backed by **one
+shared player state** — money removed through `QBCore.Functions.RemoveMoney`
+is visible through `xPlayer.getMoney()` and vice versa.
+
+`GetResourceState` reports exactly one framework as `started` (default:
+`qbx_core`), so `Bridge`-style load-time detection behaves as on a real
+server, and can be switched per test:
+
+```lua
+describe('bridge', function()
+  it('charges through the ESX path', function()
+    TestHelpers.framework.use('esx')
+    local Bridge = TestHelpers.reload('server.bridge')   -- re-runs detection
+    TestHelpers.framework.addPlayer(1, { money = { bank = 1000 } })
+    expect(Bridge.Charge(1, 'bank', 400)).to.be_truthy()
+    expect(TestHelpers.framework.getState(1).money.bank).to.equal(600)
+  end)
+end)
+```
+
+| Helper | Description |
+|--------|-------------|
+| `TestHelpers.framework.use(name)` | Activate `'qbox'`, `'qbcore'`, `'esx'` or `'none'` |
+| `TestHelpers.framework.active()` | Currently active framework name |
+| `TestHelpers.framework.addPlayer(src, opts?)` | Seed a player (citizenid, job, money, items all overridable) |
+| `TestHelpers.framework.removePlayer(src)` | Remove a seeded player |
+| `TestHelpers.framework.getState(src)` | Canonical record for assertions |
+| `TestHelpers.framework.notifications()` | Every `lib.notify` / `Notify` / `showNotification`, one log |
+| `TestHelpers.framework.useItem(src, item)` | Trigger a registered useable item |
+| `TestHelpers.framework.reset()` | Clear players + notifications (registries survive) |
+| `TestHelpers.callback(name, src, ...)` | Invoke any registered callback (ox_lib, QBCore or ESX style) and get its results |
+| `TestHelpers.reload(module)` | Drop the `require` cache and load again |
+
+Callbacks registered via `lib.callback.register`,
+`QBCore.Functions.CreateCallback` and `ESX.RegisterServerCallback` land in one
+registry; `lib.callback.await(name, false, ...)` — the client-side call shape —
+dispatches there with the default source (`TestHelpers.framework.defaultSource()`),
+so client-flow code exercises real server handlers. Jobs registered through
+`exports['qb-core']:AddJob`, `exports.qbx_core:CreateJob` or seeded directly are
+visible through `QBCore.Shared.Jobs`, `exports.qbx_core:GetJobs()` and
+`ESX.GetJobs()` alike.
+
 ### Reading a failure
 
 Output is plain, greppable, and every location is a `path:line` anchor — no box
@@ -397,11 +445,13 @@ Exit code is 0 when everything passes, 1 on any failure. "No specs found" exits
 
 ### Configuration (`9am-test.json`)
 
-```json
+```jsonc
 {
   "patterns": ["tests/**/*.spec.lua", "tests/**/*.test.lua"],
   "include": ["tests/manual.spec.lua"],
-  "exclude": ["**/node_modules/**"]
+  "exclude": ["**/node_modules/**"],
+  "framework": "qbcore",   // initial active framework: qbox (default) | qbcore | esx | none
+  "batteries": true         // false disables the framework batteries; or a list, e.g. ["oxlib"]
 }
 ```
 
@@ -467,6 +517,7 @@ and can be forced with `NINEAM_CFXLUA_E2E=1 bun test`.
 │   │   ├── spawn.ts           # node:child_process wrapper (Node-compatible)
 │   │   ├── types.ts           # Result shapes
 │   │   └── test/              # Lua side: framework, helpers, runner
+│   │       └── batteries/     # ox_lib / QBCore / QBox / ESX fakes over one shared state
 │   └── server-support/
 │       ├── queue.ts           # Serial build queue (latest-wins)
 │       └── repos.ts           # repos.json loader
