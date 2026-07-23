@@ -3,7 +3,7 @@ import path from "path";
 import chalk from "chalk";
 import {
   computeChunking, getAsset, reUpload, uploadChunk, completeUpload, deleteVersion,
-  PortalApiError, type Requester, type AssetDetail,
+  PortalApiError, type Requester, type AssetDetail, type AssetVersion,
 } from "./api.js";
 
 export interface UploadOptions {
@@ -22,8 +22,8 @@ export function oldestVersionId(detail: AssetDetail): number | null {
   )[0].id;
 }
 
-export function hasVersion(detail: AssetDetail, version: string): boolean {
-  return detail.versions.some((v) => v.version === version);
+export function duplicateVersions(detail: AssetDetail, version: string): AssetVersion[] {
+  return detail.versions.filter((v) => v.version === version);
 }
 
 export async function uploadAsset(req: Requester, opts: UploadOptions): Promise<void> {
@@ -31,9 +31,11 @@ export async function uploadAsset(req: Requester, opts: UploadOptions): Promise<
   console.log(chalk.blue(`[${label}] Uploading asset ${assetId} (v${version})...`));
 
   const detail = await getAsset(req, assetId);
-  if (hasVersion(detail, version)) {
-    throw new Error(`[${label}] Version ${version} already exists for asset ${assetId}. Bump fxmanifest.lua.`);
+  for (const dup of duplicateVersions(detail, version)) {
+    console.log(chalk.yellow(`[${label}] Version ${version} already exists (id ${dup.id}) — deleting it first...`));
+    await deleteVersion(req, assetId, dup.id);
   }
+  detail.versions = detail.versions.filter((v) => v.version !== version);
 
   const buffer = Buffer.from(await readFile(zipPath));
   const { chunkSize, chunkCount } = computeChunking(buffer.length);

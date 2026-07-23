@@ -25,7 +25,6 @@ Rules:
 - Focus on what changed from the user's perspective, not implementation details
 - Use simple, clear language (e.g. "• Added commission system", "• Fixed vehicle spawning bug")
 - Do not mention file names, function names, or technical details
-- If changes are minor (typos, formatting, config tweaks), write "• Minor fixes and improvements"
 - Return ONLY the bullet points, no headers or extra text`;
 
 function buildUserMessage(input: ChangelogInput, truncatedDiff: string): string {
