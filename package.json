@@ -4,11 +4,13 @@
   "description": "FiveM Cfx Portal auto-upload tool",
   "type": "module",
   "scripts": {
+    "deploy": "bun src/index.ts deploy",
     "build": "bun src/index.ts build",
-    "deploy": "bun src/index.ts",
+    "release": "bun src/index.ts release",
     "server": "bun src/index.ts server",
-    "register-passkey": "bun src/index.ts register-passkey",
+    "register-passkey": "bun src/index.ts register",
     "debug": "bun src/index.ts debug",
+    "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -16,7 +18,7 @@
     "archiver": "^7.0.1",
     "chalk": "^5.4.1",
     "glob": "^11.0.1",
-    "puppeteer": "^24.37.5"
+    "playwright": "^1.61.1"
   },
   "devDependencies": {
     "@types/archiver": "^6.0.3",
