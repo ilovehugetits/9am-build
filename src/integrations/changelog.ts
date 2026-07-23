@@ -15,31 +15,91 @@ export interface ChangelogInput {
 }
 
 const MAX_DIFF_LENGTH = 15_000;
+const MAX_DIFF_PER_FILE = 3_000;
+const MAX_FILES_PER_COMMIT = 15;
 
-const SYSTEM_PROMPT = `You are a changelog writer for a FiveM game server resource called "9am studios". Analyze the provided git commits and code diff, then write a brief, user-facing changelog in English.
+const SYSTEM_PROMPT = `You write Discord changelogs for "9am studios", a FiveM server resource. From the git commits and diff, produce a short changelog for server owners and players.
 
-Rules:
-- Write 1-5 short bullet points summarizing the changes
-- Each bullet point should start with a bullet character (•)
-- Do NOT use emojis anywhere in the changelog
-- Focus on what changed from the user's perspective, not implementation details
-- Use simple, clear language (e.g. "• Added commission system", "• Fixed vehicle spawning bug")
-- Do not mention file names, function names, or technical details
-- Return ONLY the bullet points, no headers or extra text`;
+Format:
+- 1-6 bullets, each on its own line, each starting with "•"
+- Order by impact: new features, then improvements, then fixes
+- Start each bullet with a past-tense verb: Added, Improved, Fixed, Changed, Removed
+- No emojis, no headers, no intro or outro — output only the bullets
+
+Content:
+- Describe what each change does for the person using the resource, in plain language
+- Light technical detail is welcome when it helps: feature names, commands, config options, framework names (e.g. "Added QBox framework support", "Fixed /duty command not toggling"). Never mention file paths, function names, or code internals
+- Merge closely related changes into one bullet
+- Skip refactors, formatting, CI, version bumps, and dependency updates unless they change behavior
+- Base the changelog only on what the commits and diff show — if the diff is truncated, do not guess at unseen changes`;
+
+/**
+ * Trims the raw diff to a budget by working per-file instead of a blind slice:
+ * noise files (lockfiles, generated/binary assets) are dropped entirely, each
+ * remaining file is capped, and whatever doesn't fit is summarized by name so
+ * the model knows what it isn't seeing.
+ */
+function prepareDiff(diff: string): string {
+  const NOISE_FILE = /(^|\/)(bun\.lock|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|.*\.(lock|min\.js|min\.css|map|png|jpg|jpeg|gif|webp|ico|ttf|woff2?))( |$)/;
+
+  const sections = diff.split(/^(?=diff --git )/m).filter(Boolean);
+  const kept: string[] = [];
+  const omitted: string[] = [];
+  let used = 0;
+
+  for (const section of sections) {
+    const fileName = section.match(/^diff --git a\/(\S+)/)?.[1] ?? "unknown";
+
+    if (NOISE_FILE.test(fileName) || section.includes("Binary files")) continue;
+
+    const chunk =
+      section.length > MAX_DIFF_PER_FILE
+        ? section.slice(0, MAX_DIFF_PER_FILE) + "\n... (file diff truncated)\n"
+        : section;
+
+    if (used + chunk.length > MAX_DIFF_LENGTH) {
+      omitted.push(fileName);
+      continue;
+    }
+
+    kept.push(chunk);
+    used += chunk.length;
+  }
+
+  let result = kept.join("");
+  if (omitted.length > 0) {
+    result += `\n... (diff omitted for ${omitted.length} more file(s): ${omitted.join(", ")})`;
+  }
+  return result || diff.slice(0, MAX_DIFF_LENGTH);
+}
 
 function buildUserMessage(input: ChangelogInput, truncatedDiff: string): string {
   const commitSummary = input.commits
     .map((c) => {
       const files = [
-        ...c.added.map((f) => `+ ${f}`),
-        ...c.removed.map((f) => `- ${f}`),
-        ...c.modified.map((f) => `~ ${f}`),
-      ].join("\n");
-      return `Commit: ${c.message}\nFiles:\n${files}`;
+        ...c.added.map((f) => `A ${f}`),
+        ...c.removed.map((f) => `D ${f}`),
+        ...c.modified.map((f) => `M ${f}`),
+      ];
+      const shown = files.slice(0, MAX_FILES_PER_COMMIT);
+      if (files.length > MAX_FILES_PER_COMMIT) {
+        shown.push(`... +${files.length - MAX_FILES_PER_COMMIT} more files`);
+      }
+      return `- ${c.message}${shown.length > 0 ? `\n  ${shown.join("\n  ")}` : ""}`;
     })
-    .join("\n\n");
+    .join("\n");
 
-  return `Repository: ${input.repoName}\n\nCommits:\n${commitSummary}\n\nCode diff:\n\`\`\`\n${truncatedDiff}\n\`\`\``;
+  return `Repository: ${input.repoName}
+
+Commits (A=added, D=deleted, M=modified):
+${commitSummary}
+
+Diff:
+\`\`\`diff
+${truncatedDiff}
+\`\`\`
+
+Write the changelog.`;
 }
 
 async function generateViaAnthropic(input: ChangelogInput, truncatedDiff: string): Promise<string> {
@@ -116,10 +176,7 @@ export async function generateChangelog(input: ChangelogInput): Promise<string> 
     throw new Error("Neither OPENROUTER_API_KEY nor ANTHROPIC_API_KEY is set.");
   }
 
-  const truncatedDiff =
-    input.diff.length > MAX_DIFF_LENGTH
-      ? input.diff.slice(0, MAX_DIFF_LENGTH) + "\n... (truncated)"
-      : input.diff;
+  const truncatedDiff = prepareDiff(input.diff);
 
   if (hasOpenRouter) {
     return generateViaOpenRouter(input, truncatedDiff);
