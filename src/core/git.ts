@@ -2,7 +2,7 @@ import { access, mkdir } from "fs/promises";
 import path from "path";
 import chalk from "chalk";
 
-const REPOS_DIR = path.resolve(import.meta.dirname, "../repos");
+const REPOS_DIR = path.resolve(import.meta.dirname, "../../repos");
 
 export function getGitDiff(repoDir: string, beforeSha: string, afterSha: string): string {
   const result = Bun.spawnSync(["git", "diff", `${beforeSha}..${afterSha}`], {
