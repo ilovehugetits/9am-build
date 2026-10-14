@@ -5,6 +5,7 @@ import { buildCommand } from "./commands/build.js";
 import { deployCommand } from "./commands/deploy.js";
 import { releaseCommand } from "./commands/release.js";
 import { registerCommand } from "./commands/register.js";
+import { loginCommand } from "./commands/login.js";
 import { testCommand } from "./commands/test.js";
 import { startServer } from "./commands/server.js";
 import { announceRelease } from "./commands/shared.js";
@@ -19,6 +20,7 @@ function usage(): never {
   console.error(chalk.red("  bun run release <script>    Build + GitHub release only (no portal)"));
   console.error(chalk.red("  bun run server              Start webhook server"));
   console.error(chalk.red("  bun run register-passkey    Register a forum passkey"));
+  console.error(chalk.red("  bun run login               Refresh the portal session by hand"));
   console.error(chalk.red("  bun run test:lua <resource> Run CfxLua unit tests"));
   console.error(chalk.red("  bun src/index.ts debug <repo> <commit>  Changelog test"));
   process.exit(1);
@@ -78,6 +80,8 @@ async function main() {
       return startServer();
     case "register":
       return registerCommand();
+    case "login":
+      return loginCommand();
     case "debug": {
       const [, , , repoName, commitId] = process.argv;
       if (!repoName || !commitId) usage();

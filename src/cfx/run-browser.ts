@@ -7,7 +7,7 @@ const RUNNER = path.resolve(import.meta.dirname, "browser-runner.ts");
 // image. NODE_BIN allows overriding the node binary if it isn't on PATH.
 const NODE_BIN = process.env.NODE_BIN || "node";
 
-export type BrowserMode = "login" | "register";
+export type BrowserMode = "login" | "login-interactive" | "register";
 
 /** Spawn the Node-side browser runner, inheriting stdio (so interactive
  *  registration and progress logs reach the user). Resolves to the exit code. */

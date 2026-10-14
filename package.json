@@ -33,6 +33,7 @@
     "release": "bun src/index.ts release",
     "server": "bun src/index.ts server",
     "register-passkey": "bun src/index.ts register",
+    "login": "bun src/index.ts login",
     "test:lua": "bun src/index.ts test",
     "debug": "bun src/index.ts debug",
     "test": "bun test",

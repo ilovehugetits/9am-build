@@ -52,6 +52,7 @@ Edit `.env` with your values:
 WEBHOOK_SECRET=your-webhook-secret
 PORT=9000
 DISCORD_CHANGELOG_WEBHOOK=https://discord.com/api/webhooks/...
+DISCORD_ALERT_WEBHOOK=https://discord.com/api/webhooks/...
 ANTHROPIC_API_KEY=sk-ant-...
 GITHUB_TOKEN=ghp_...
 ```
@@ -84,6 +85,8 @@ scp passkey-credential.json user@your-server:/path/to/9am-build/
 ```
 
 Session cookies are saved to `auth-state.json` and reused automatically. No GUI needed after initial registration.
+
+**Login blocked by "new device or location"?** The forum sometimes asks for an email confirmation that a headless login cannot pass. Run `bun run login` on your local machine. A Chromium window opens; log in, paste the email login link into that window's address bar, then press **Enter** in the terminal. Copy the fresh `auth-state.json` to your server. Set `DISCORD_ALERT_WEBHOOK` to get a Discord reminder before the forum session expires.
 
 ### 4. Add Your Repos
 
@@ -183,6 +186,7 @@ You can define one or both versions. Each gets its own zip and asset upload.
 | `bun run release <name>` | Build + GitHub release only — never touches the portal or opens a browser |
 | `bun run server` | Start webhook server for automated deployments |
 | `bun run register-passkey` | One-time passkey registration |
+| `bun run login` | Headed portal login to refresh `auth-state.json` by hand |
 | `bun src/index.ts debug <name> <commit>` | Test changelog generation for a commit |
 
 ## Webhook Mode (CI/CD)
@@ -283,6 +287,7 @@ Automatically posts AI-generated changelogs to Discord after each deployment.
 | `OPENROUTER_API_KEY` | Changelog* | OpenRouter API key (takes priority over Anthropic) |
 | `OPENROUTER_MODEL` | No | OpenRouter model (default: `anthropic/claude-sonnet-4.6`) |
 | `DISCORD_CHANGELOG_WEBHOOK` | No | Discord webhook URL |
+| `DISCORD_ALERT_WEBHOOK` | No | Private Discord webhook for ops alerts. In server mode, the forum session is checked at start and then once a day; an alert is sent when the forum cookie in `auth-state.json` is missing, expired, or expires in under 7 days. |
 | `GITHUB_TOKEN` | No | GitHub token for creating releases with build zips |
 | `CHROMIUM_NO_SANDBOX` | No | Set to `1` to disable the Chromium sandbox (needed only when running as root in a container; the Docker image sets it automatically). Leave unset locally. |
 

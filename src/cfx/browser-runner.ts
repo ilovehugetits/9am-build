@@ -13,6 +13,7 @@ import { toStorageState, type StorageState } from "./storage-state.js";
 
 const AUTH_STATE_FILE = path.resolve(import.meta.dirname, "../../auth-state.json");
 const FORUM_SECURITY_URL = "https://forum.cfx.re/my/preferences/security";
+const FORUM_LOGIN_URL = "https://forum.cfx.re/login";
 
 // Sandbox stays ON by default; containers running as root opt out via env.
 function launchArgs(): string[] {
@@ -60,6 +61,41 @@ async function runLogin(): Promise<void> {
   }
 }
 
+/** Headed, interactive login. Needed when the forum blocks the headless login
+ *  with its "new device or location" email check, which only a human can pass. */
+async function runLoginInteractive(): Promise<void> {
+  const state = await readState();
+  const browser = await chromium.launch({ headless: false, args: launchArgs() });
+  try {
+    const context = await browser.newContext(state ? { storageState: state } : {});
+    const page = await context.newPage();
+
+    const credential = await loadCredential();
+    if (credential) await setupVirtualAuthenticator(page, credential);
+    await page.goto(FORUM_LOGIN_URL, { waitUntil: "domcontentloaded" });
+
+    console.log("\n════════════════════════════════════════");
+    console.log("  In the browser window:");
+    console.log("  1. Log in (passkey or password)");
+    console.log("  2. If the forum asks you to log in via email, COPY the");
+    console.log("     link from that email (do not click it) and paste it");
+    console.log("     into this window's address bar, then confirm");
+    console.log("  3. When the forum shows you as logged in, return here");
+    console.log("     and press Enter");
+    console.log("════════════════════════════════════════\n");
+
+    await new Promise<void>((resolve) => process.stdin.once("data", () => resolve()));
+
+    // Forum session is alive now — SSO carries it over to the portal.
+    if (!(await loginViaSSO(page))) throw new Error("Forum login done, but portal SSO did not complete.");
+
+    await writeState((await context.storageState()) as StorageState);
+    console.log("Session refreshed.");
+  } finally {
+    await browser.close();
+  }
+}
+
 /** Headed, interactive passkey registration. */
 async function runRegister(): Promise<void> {
   const state = await readState();
@@ -98,6 +134,7 @@ async function runRegister(): Promise<void> {
 const mode = process.argv[2];
 try {
   if (mode === "login") await runLogin();
+  else if (mode === "login-interactive") await runLoginInteractive();
   else if (mode === "register") await runRegister();
   else {
     console.error(`Unknown browser-runner mode: ${mode}`);

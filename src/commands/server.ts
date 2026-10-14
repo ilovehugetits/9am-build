@@ -4,6 +4,7 @@ import { cloneOrPull, getGitDiff } from "../core/git.js";
 import { deployCommand } from "./deploy.js";
 import { buildQueue } from "../server-support/queue.js";
 import { loadReposConfig, type RepoEntry } from "../server-support/repos.js";
+import { startAuthWatch } from "../server-support/auth-watch.js";
 import { generateChangelog } from "../integrations/changelog.js";
 import { sendDiscordChangelog, classifyReleaseType } from "../integrations/discord.js";
 
@@ -176,4 +177,6 @@ export async function startServer(): Promise<void> {
   });
 
   console.log(chalk.bold.green(`Server started on port ${port}.\n`));
+
+  startAuthWatch();
 }

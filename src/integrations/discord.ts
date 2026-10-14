@@ -56,3 +56,32 @@ export async function sendDiscordChangelog(options: DiscordChangelogOptions): Pr
 
   console.log(chalk.green("[Discord] Changelog notification sent."));
 }
+
+const ALERT_COLOR = 0xe5484d;
+
+/** Private ops alert (e.g. stale portal auth). Uses its own webhook so alerts
+ *  never land in the public changelog channel. */
+export async function sendDiscordAlert(title: string, description: string): Promise<void> {
+  const webhookUrl = process.env.DISCORD_ALERT_WEBHOOK;
+  if (!webhookUrl) {
+    console.log(chalk.yellow(`[Discord] DISCORD_ALERT_WEBHOOK is not set, skipping alert: ${title}`));
+    return;
+  }
+
+  const response = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      username: "9am-build",
+      avatar_url: "https://cdn.9am.dev/logo.png",
+      embeds: [{ title, description, color: ALERT_COLOR, timestamp: new Date().toISOString() }],
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Discord alert webhook failed (${response.status}): ${text}`);
+  }
+
+  console.log(chalk.green(`[Discord] Alert sent: ${title}`));
+}
