@@ -12,6 +12,16 @@ export function getGitDiff(repoDir: string, beforeSha: string, afterSha: string)
   return result.stdout.toString().trim();
 }
 
+/** Latest tag reachable from HEAD, ignoring `releaseTag` itself. Works whether
+ *  or not the new release tag exists locally yet. Null when there is none. */
+export function getPreviousTag(repoDir: string, releaseTag: string): string | null {
+  const result = Bun.spawnSync(
+    ["git", "-C", repoDir, "describe", "--tags", "--abbrev=0", "--exclude", releaseTag, "HEAD"],
+    { stdio: ["pipe", "pipe", "pipe"] }
+  );
+  return result.exitCode === 0 ? result.stdout.toString().trim() || null : null;
+}
+
 export function getRepoDir(repoName: string): string {
   return path.join(REPOS_DIR, repoName);
 }
@@ -39,7 +49,9 @@ export async function cloneOrPull(
 
   if (await isCloned(repoName)) {
     console.log(chalk.gray(`[${repoName}] Repo exists, pulling...`));
-    runGit(["-C", repoDir, "fetch", "origin", branch]);
+    // --tags: release tags are created via the GitHub API, so a branch-only
+    // fetch never brings them in, and the changelog cannot find the previous one.
+    runGit(["-C", repoDir, "fetch", "--tags", "--force", "origin", branch]);
     runGit(["-C", repoDir, "reset", "--hard", `origin/${branch}`]);
     console.log(chalk.green(`[${repoName}] Pull completed.`));
   } else {

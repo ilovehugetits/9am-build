@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { getGitDiff } from "../core/git.js";
+import { getGitDiff, getPreviousTag } from "../core/git.js";
 import { generateChangelog } from "../integrations/changelog.js";
 import { sendDiscordChangelog, classifyReleaseType } from "../integrations/discord.js";
 import type { GitHubReleaseResult } from "../integrations/github.js";
@@ -15,10 +15,7 @@ export async function announceRelease(
   if (!release || release.status === "skipped" || !release.tag) return;
 
   try {
-    const prevTag = Bun.spawnSync(
-      ["git", "-C", repoDir, "describe", "--tags", "--abbrev=0", `${release.tag}^`],
-      { stdio: ["pipe", "pipe", "pipe"] }
-    ).stdout.toString().trim();
+    const prevTag = getPreviousTag(repoDir, release.tag);
 
     const logArgs = prevTag
       ? ["git", "-C", repoDir, "log", `${prevTag}..HEAD`, "--pretty=format:%s"]
